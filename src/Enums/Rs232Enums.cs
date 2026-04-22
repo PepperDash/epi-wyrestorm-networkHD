@@ -30,4 +30,18 @@ namespace PepperDash.Essentials.Plugin.Enums
         Seven = 7,
         Eight = 8,
     }
+
+    /// <summary>
+    /// Controls whether a COM port (IR or RS-232) participates in matrix routing.
+    /// When null or <see cref="NotRoutable"/>, the port is used only via direct send methods.
+    /// </summary>
+    public enum NhdComPortRoutingMode
+    {
+        /// <summary>No routing ports registered. Use SendIrData/Send232Command directly.</summary>
+        NotRoutable = 0,
+        /// <summary>Control system side — connected to the Crestron COM port. Data enters the NHD network here (e.g. Crestron sends 232 commands, IR blaster driven from controller).</summary>
+        ControlSystem = 1,
+        /// <summary>Device side — connected to the end device (e.g. display). Data exits the NHD network here.</summary>
+        Device = 2,
+    }
 }

@@ -15,8 +15,8 @@ namespace PepperDash.Essentials.Plugin
 			: base(key, name, config, "NHD-CTL-PRO")
 		{
 			Comms = comms;
-			AddInputPort("network", 1);
-			AddOutputPort("network", 1);
+			AddStreamInputPort();
+			AddStreamOutputPort();
 		}
 	}
 }

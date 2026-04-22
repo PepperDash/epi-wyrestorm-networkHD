@@ -26,6 +26,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         OutputSlots = new Dictionary<string, IRoutingOutputSlot>();
 
         AddPostActivationAction(BuildMatrixRouting);
+        AddPostActivationAction(BuildTieLines);
     }
 
     public static NhdGlobalRouter Instance => _instance;
@@ -110,10 +111,47 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
                 .ToDictionary(o => o.Key, o => o);
 
             this.LogDebug("Total outputs: {count}", OutputSlots.Count);
+
+            // Build router ports so tie lines can connect to them
+            foreach (var tx in DeviceManager.AllDevices.OfType<NhdBaseDevice>().Where(d => d.IsTransmitter))
+            {
+                InputPorts.Add(new RoutingInputPort(
+                    tx.Key,
+                    eRoutingSignalType.AudioVideo,
+                    eRoutingPortConnectionType.Streaming,
+                    tx,
+                    this));
+            }
+
+            foreach (var rx in DeviceManager.AllDevices.OfType<NhdBaseDevice>().Where(d => !d.IsTransmitter))
+            {
+                OutputPorts.Add(new RoutingOutputPort(
+                    rx.Key,
+                    eRoutingSignalType.AudioVideo,
+                    eRoutingPortConnectionType.Streaming,
+                    rx,
+                    this));
+            }
         }
         catch (Exception ex)
         {
             Debug.LogMessage(ex, "Exception building MatrixRouting: {message}", this, ex.Message);
+        }
+    }
+
+    private static void BuildTieLines()
+    {
+        try
+        {
+            var transmitters = DeviceManager.AllDevices.OfType<NhdBaseDevice>().Where(d => d.IsTransmitter).ToList();
+            NhdTieLineConnector.AddTieLinesForTransmitters(transmitters);
+
+            var receivers = DeviceManager.AllDevices.OfType<NhdBaseDevice>().Where(d => !d.IsTransmitter).ToList();
+            NhdTieLineConnector.AddTieLinesForReceivers(receivers);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogMessage(ex, "Exception building tie lines: {message}", null, ex.Message);
         }
     }
 }

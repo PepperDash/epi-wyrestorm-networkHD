@@ -2,13 +2,13 @@
 using System.Collections.Generic;
 using PepperDash.Core;
 using PepperDash.Essentials.Core;
+using PepperDash.Essentials.Plugin.Enums;
+using PepperDash.Essentials.Plugin.Routing;
 
 namespace PepperDash.Essentials.Plugin
 {
 	public abstract class NhdBaseDevice : EssentialsDevice, IRoutingWithFeedback
 	{
-		private const eRoutingPortConnectionType DefaultPortConnectionType = eRoutingPortConnectionType.None;
-
 		protected NhdBaseDevice(string key, string name, NhdDeviceProperties config, string modelName)
 			: base(key, name)
 		{
@@ -60,14 +60,87 @@ namespace PepperDash.Essentials.Plugin
 			}
 		}
 
-		protected void AddInputPort(string key, object selector)
+		// Video ports
+		protected void AddHdmiInputPort(string key)
+			=> InputPorts.Add(new RoutingInputPort(key, eRoutingSignalType.AudioVideo, eRoutingPortConnectionType.Hdmi, key, this));
+
+		protected void AddHdmiOutputPort(string key)
+			=> OutputPorts.Add(new RoutingOutputPort(key, eRoutingSignalType.AudioVideo, eRoutingPortConnectionType.Hdmi, key, this));
+
+		protected void AddStreamInputPort()
+			=> InputPorts.Add(new RoutingInputPort(NhdPortKeys.Stream, eRoutingSignalType.AudioVideo, eRoutingPortConnectionType.Streaming, NhdPortKeys.Stream, this));
+
+		protected void AddStreamOutputPort()
+			=> OutputPorts.Add(new RoutingOutputPort(NhdPortKeys.Stream, eRoutingSignalType.AudioVideo, eRoutingPortConnectionType.Streaming, NhdPortKeys.Stream, this));
+
+		// Audio ports
+		protected void AddHdmiAudioInputPort(string key)
+			=> InputPorts.Add(new RoutingInputPort(key, eRoutingSignalType.Audio, eRoutingPortConnectionType.Hdmi, key, this));
+
+		protected void AddHdmiAudioOutputPort(string key)
+			=> OutputPorts.Add(new RoutingOutputPort(key, eRoutingSignalType.Audio, eRoutingPortConnectionType.Hdmi, key, this));
+
+		protected void AddAnalogAudioInputPort()
+			=> InputPorts.Add(new RoutingInputPort(NhdPortKeys.AnalogAudioInput, eRoutingSignalType.Audio, eRoutingPortConnectionType.LineAudio, NhdPortKeys.AnalogAudioInput, this));
+
+		protected void AddAnalogAudioOutputPort()
+			=> OutputPorts.Add(new RoutingOutputPort(NhdPortKeys.AnalogAudioOutput, eRoutingSignalType.Audio, eRoutingPortConnectionType.LineAudio, NhdPortKeys.AnalogAudioOutput, this));
+
+		protected void AddDanteInputPort()
+			=> InputPorts.Add(new RoutingInputPort(NhdPortKeys.DanteInput, eRoutingSignalType.Audio, eRoutingPortConnectionType.LineAudio, NhdPortKeys.DanteInput, this));
+
+		protected void AddDanteOutputPort()
+			=> OutputPorts.Add(new RoutingOutputPort(NhdPortKeys.DanteOutput, eRoutingSignalType.Audio, eRoutingPortConnectionType.LineAudio, NhdPortKeys.DanteOutput, this));
+
+		// Control ports
+		protected void AddUsbInputPort()
+			=> InputPorts.Add(new RoutingInputPort(NhdPortKeys.UsbInput, eRoutingSignalType.UsbInput, eRoutingPortConnectionType.Usb, NhdPortKeys.UsbInput, this));
+
+		protected void AddUsbOutputPort()
+			=> OutputPorts.Add(new RoutingOutputPort(NhdPortKeys.UsbOutput, eRoutingSignalType.UsbOutput, eRoutingPortConnectionType.Usb, NhdPortKeys.UsbOutput, this));
+
+		/// <summary>
+		/// Adds IR routing port(s) based on the configured routing mode.
+		/// ControlSystem: adds irIn — Crestron side, data enters NHD here.
+		/// Device: adds irOut — end-device side, data exits NHD here.
+		/// NotRoutable or null: no routing ports; use SendIrData directly.
+		/// </summary>
+		protected void AddIrPorts(NhdComPortRoutingMode? mode)
 		{
-			InputPorts.Add(new RoutingInputPort(key, eRoutingSignalType.AudioVideo, DefaultPortConnectionType, selector, this));
+			switch (mode ?? NhdComPortRoutingMode.NotRoutable)
+			{
+				case NhdComPortRoutingMode.ControlSystem:
+					InputPorts.Add(new RoutingInputPort(NhdPortKeys.IrInput, eRoutingSignalType.IR, eRoutingPortConnectionType.Ir, NhdPortKeys.IrInput, this));
+					break;
+				case NhdComPortRoutingMode.Device:
+					OutputPorts.Add(new RoutingOutputPort(NhdPortKeys.IrOutput, eRoutingSignalType.IR, eRoutingPortConnectionType.Ir, NhdPortKeys.IrOutput, this));
+					break;
+				case NhdComPortRoutingMode.NotRoutable:
+				default:
+					break;
+			}
 		}
 
-		protected void AddOutputPort(string key, object selector)
+		/// <summary>
+		/// Adds RS-232 routing port(s) based on the configured routing mode.
+		/// ControlSystem: adds rs232In — Crestron side, data enters NHD here.
+		/// Device: adds rs232Out — end-device side, data exits NHD here.
+		/// NotRoutable or null: no routing ports; use Send232Command directly.
+		/// </summary>
+		protected void AddRs232Ports(NhdComPortRoutingMode? mode)
 		{
-			OutputPorts.Add(new RoutingOutputPort(key, eRoutingSignalType.AudioVideo, DefaultPortConnectionType, selector, this));
+			switch (mode ?? NhdComPortRoutingMode.NotRoutable)
+			{
+				case NhdComPortRoutingMode.ControlSystem:
+					InputPorts.Add(new RoutingInputPort(NhdPortKeys.Rs232Input, eRoutingSignalType.None, eRoutingPortConnectionType.Com, NhdPortKeys.Rs232Input, this));
+					break;
+				case NhdComPortRoutingMode.Device:
+					OutputPorts.Add(new RoutingOutputPort(NhdPortKeys.Rs232Output, eRoutingSignalType.None, eRoutingPortConnectionType.Com, NhdPortKeys.Rs232Output, this));
+					break;
+				case NhdComPortRoutingMode.NotRoutable:
+				default:
+					break;
+			}
 		}
 
 		/// <summary>
