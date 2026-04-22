@@ -1,4 +1,4 @@
-![PepperDash Essentials Pluign Logo](/images/essentials-plugin-blue.png)
+![PepperDash Essentials Plugin Logo](/images/essentials-plugin-blue.png)
 
 # WyreStorm NetworkHD Essentials Plugin (c) 2025
 

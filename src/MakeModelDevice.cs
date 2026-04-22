@@ -6,9 +6,11 @@ using PepperDash.Essentials.Core.Bridges;
 
 namespace PepperDash.Essentials.Plugin
 {
-	public abstract class WyrestormNetworkHdBaseDevice : EssentialsBridgeableDevice, IRoutingWithFeedback
+	public abstract class WyreStormNetworkHdBaseDevice : EssentialsBridgeableDevice, IRoutingWithFeedback
 	{
-		protected WyrestormNetworkHdBaseDevice(string key, string name, MakeModelConfig config, IBasicCommunication comms, string modelName)
+		private const eRoutingPortConnectionType DefaultPortConnectionType = eRoutingPortConnectionType.None;
+
+		protected WyreStormNetworkHdBaseDevice(string key, string name, MakeModelConfig config, IBasicCommunication comms, string modelName)
 			: base(key, name)
 		{
 			Config = config;
@@ -51,12 +53,12 @@ namespace PepperDash.Essentials.Plugin
 
 		protected void AddInputPort(string key, object selector)
 		{
-			InputPorts.Add(new RoutingInputPort(key, eRoutingSignalType.AudioVideo, (eRoutingPortConnectionType)0, selector, this));
+			InputPorts.Add(new RoutingInputPort(key, eRoutingSignalType.AudioVideo, DefaultPortConnectionType, selector, this));
 		}
 
 		protected void AddOutputPort(string key, object selector)
 		{
-			OutputPorts.Add(new RoutingOutputPort(key, eRoutingSignalType.AudioVideo, (eRoutingPortConnectionType)0, selector, this));
+			OutputPorts.Add(new RoutingOutputPort(key, eRoutingSignalType.AudioVideo, DefaultPortConnectionType, selector, this));
 		}
 
 		public override void LinkToApi(BasicTriList trilist, uint joinStart, string joinMapKey, EiscApiAdvanced bridge)
@@ -64,7 +66,7 @@ namespace PepperDash.Essentials.Plugin
 		}
 	}
 
-	public class Nhd150RsDecoderDevice : WyrestormNetworkHdBaseDevice
+	public class Nhd150RsDecoderDevice : WyreStormNetworkHdBaseDevice
 	{
 		public Nhd150RsDecoderDevice(string key, string name, MakeModelConfig config, IBasicCommunication comms)
 			: base(key, name, config, comms, "NHD-150-RS")
@@ -74,7 +76,7 @@ namespace PepperDash.Essentials.Plugin
 		}
 	}
 
-	public class Nhd120TxEncoderDevice : WyrestormNetworkHdBaseDevice
+	public class Nhd120TxEncoderDevice : WyreStormNetworkHdBaseDevice
 	{
 		public Nhd120TxEncoderDevice(string key, string name, MakeModelConfig config, IBasicCommunication comms)
 			: base(key, name, config, comms, "NHD-120-TX")
@@ -84,7 +86,7 @@ namespace PepperDash.Essentials.Plugin
 		}
 	}
 
-	public class NhdCtlProControllerDevice : WyrestormNetworkHdBaseDevice
+	public class NhdCtlProControllerDevice : WyreStormNetworkHdBaseDevice
 	{
 		public NhdCtlProControllerDevice(string key, string name, MakeModelConfig config, IBasicCommunication comms)
 			: base(key, name, config, comms, "NHD-CTL-PRO")

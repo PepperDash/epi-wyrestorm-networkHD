@@ -4,7 +4,7 @@ using PepperDash.Essentials.Core;
 
 namespace PepperDash.Essentials.Plugin
 {
-  public class MakeModelDeviceFactory : EssentialsPluginDeviceFactory<WyrestormNetworkHdBaseDevice>
+  public class MakeModelDeviceFactory : EssentialsPluginDeviceFactory<WyreStormNetworkHdBaseDevice>
   {
     public MakeModelDeviceFactory()
     {
