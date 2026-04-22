@@ -1,0 +1,15 @@
+using Crestron.SimplSharpPro.DeviceSupport;
+using PepperDash.Core;
+
+namespace PepperDash.Essentials.Plugin
+{
+	public class Nhd150Rs : WyreStormNetworkHdBaseDevice
+	{
+		public Nhd150Rs(string key, string name, MakeModelConfig config, IBasicCommunication comms)
+			: base(key, name, config, comms, "NHD-150-RS")
+		{
+			AddInputPort("stream", 1);
+			AddOutputPort("hdmi", 1);
+		}
+	}
+}
