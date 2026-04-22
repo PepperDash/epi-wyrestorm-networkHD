@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using Crestron.SimplSharpPro.DeviceSupport;
 using PepperDash.Core;
 using PepperDash.Essentials.Core;
 using PepperDash.Essentials.Core.Bridges;
@@ -10,16 +9,14 @@ namespace PepperDash.Essentials.Plugin
 	{
 		private const eRoutingPortConnectionType DefaultPortConnectionType = eRoutingPortConnectionType.None;
 
-		protected NhdBaseDevice(string key, string name, NhdDeviceProperties config, IBasicCommunication comms, string modelName)
+		protected NhdBaseDevice(string key, string name, NhdDeviceProperties config, string modelName)
 			: base(key, name)
 		{
 			Config = config;
-			Comms = comms;
 			ModelName = modelName;
 		}
 
 		protected NhdDeviceProperties Config { get; private set; }
-		protected IBasicCommunication Comms { get; private set; }
 		public string ModelName { get; private set; }
 
 		public RoutingPortCollection<RoutingInputPort> InputPorts { get; } = new RoutingPortCollection<RoutingInputPort>();
@@ -65,10 +62,6 @@ namespace PepperDash.Essentials.Plugin
 		protected void AddOutputPort(string key, object selector)
 		{
 			OutputPorts.Add(new RoutingOutputPort(key, eRoutingSignalType.AudioVideo, DefaultPortConnectionType, selector, this));
-		}
-
-		public override void LinkToApi(BasicTriList trilist, uint joinStart, string joinMapKey, EiscApiAdvanced bridge)
-		{
 		}
 	}
 }

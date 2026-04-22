@@ -17,10 +17,7 @@ namespace PepperDash.Essentials.Plugin
             var props = GetProperties(dc);
             if (props == null) return null;
 
-            var comms = GetComms(dc);
-            if (comms == null) return null;
-
-            return new Nhd120Tx(dc.Key, dc.Name, props, comms);
+            return new Nhd120Tx(dc.Key, dc.Name, props);
         }
     }
 }
