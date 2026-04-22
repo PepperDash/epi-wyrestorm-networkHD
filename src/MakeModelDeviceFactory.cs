@@ -30,7 +30,13 @@ namespace PepperDash.Essentials.Plugin
         return null;
       }
 
-      var type = dc.Type.ToLower();
+      if (string.IsNullOrEmpty(dc.Type))
+      {
+        Debug.LogError("[{key}] Factory: missing device type for {name}", dc.Key, dc.Name);
+        return null;
+      }
+
+      var type = dc.Type.ToLowerInvariant();
       if (type == "nhd-150-rs" || type == "nhd150rs")
       {
         return new Nhd150RsDecoderDevice(dc.Key, dc.Name, propertiesConfig, comms);
