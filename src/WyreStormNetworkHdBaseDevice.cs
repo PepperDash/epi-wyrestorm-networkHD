@@ -65,34 +65,4 @@ namespace PepperDash.Essentials.Plugin
 		{
 		}
 	}
-
-	public class Nhd150RsDecoderDevice : WyreStormNetworkHdBaseDevice
-	{
-		public Nhd150RsDecoderDevice(string key, string name, MakeModelConfig config, IBasicCommunication comms)
-			: base(key, name, config, comms, "NHD-150-RS")
-		{
-			AddInputPort("stream", 1);
-			AddOutputPort("hdmi", 1);
-		}
-	}
-
-	public class Nhd120TxEncoderDevice : WyreStormNetworkHdBaseDevice
-	{
-		public Nhd120TxEncoderDevice(string key, string name, MakeModelConfig config, IBasicCommunication comms)
-			: base(key, name, config, comms, "NHD-120-TX")
-		{
-			AddInputPort("hdmi", 1);
-			AddOutputPort("stream", 1);
-		}
-	}
-
-	public class NhdCtlProControllerDevice : WyreStormNetworkHdBaseDevice
-	{
-		public NhdCtlProControllerDevice(string key, string name, MakeModelConfig config, IBasicCommunication comms)
-			: base(key, name, config, comms, "NHD-CTL-PRO")
-		{
-			AddInputPort("network", 1);
-			AddOutputPort("network", 1);
-		}
-	}
 }

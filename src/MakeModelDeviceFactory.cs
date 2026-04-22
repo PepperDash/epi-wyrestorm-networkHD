@@ -39,15 +39,15 @@ namespace PepperDash.Essentials.Plugin
       var type = dc.Type.ToLowerInvariant();
       if (type == "nhd-150-rs" || type == "nhd150rs")
       {
-        return new Nhd150RsDecoderDevice(dc.Key, dc.Name, propertiesConfig, comms);
+        return new Nhd150Rs(dc.Key, dc.Name, propertiesConfig, comms);
       }
       if (type == "nhd-120-tx" || type == "nhd120tx")
       {
-        return new Nhd120TxEncoderDevice(dc.Key, dc.Name, propertiesConfig, comms);
+        return new Nhd120Tx(dc.Key, dc.Name, propertiesConfig, comms);
       }
       if (type == "nhd-ctl-pro" || type == "nhdctlpro")
       {
-        return new NhdCtlProControllerDevice(dc.Key, dc.Name, propertiesConfig, comms);
+        return new NhdCtlPro(dc.Key, dc.Name, propertiesConfig, comms);
       }
 
       Debug.LogError("[{key}] Factory: unsupported device type '{type}' for {name}", dc.Key, dc.Type, dc.Name);
