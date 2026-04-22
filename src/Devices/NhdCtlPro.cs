@@ -3,9 +3,9 @@ using PepperDash.Core;
 
 namespace PepperDash.Essentials.Plugin
 {
-	public class NhdCtlPro : WyreStormNetworkHdBaseDevice
+	public class NhdCtlPro : NhdBaseDevice
 	{
-		public NhdCtlPro(string key, string name, MakeModelConfig config, IBasicCommunication comms)
+		public NhdCtlPro(string key, string name, NhdDeviceProperties config, IBasicCommunication comms)
 			: base(key, name, config, comms, "NHD-CTL-PRO")
 		{
 			AddInputPort("network", 1);

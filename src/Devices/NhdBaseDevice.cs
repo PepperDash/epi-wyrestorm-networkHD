@@ -6,11 +6,11 @@ using PepperDash.Essentials.Core.Bridges;
 
 namespace PepperDash.Essentials.Plugin
 {
-	public abstract class WyreStormNetworkHdBaseDevice : EssentialsBridgeableDevice, IRoutingWithFeedback
+	public abstract class NhdBaseDevice : EssentialsBridgeableDevice, IRoutingWithFeedback
 	{
 		private const eRoutingPortConnectionType DefaultPortConnectionType = eRoutingPortConnectionType.None;
 
-		protected WyreStormNetworkHdBaseDevice(string key, string name, MakeModelConfig config, IBasicCommunication comms, string modelName)
+		protected NhdBaseDevice(string key, string name, NhdDeviceProperties config, IBasicCommunication comms, string modelName)
 			: base(key, name)
 		{
 			Config = config;
@@ -18,7 +18,7 @@ namespace PepperDash.Essentials.Plugin
 			ModelName = modelName;
 		}
 
-		protected MakeModelConfig Config { get; private set; }
+		protected NhdDeviceProperties Config { get; private set; }
 		protected IBasicCommunication Comms { get; private set; }
 		public string ModelName { get; private set; }
 
