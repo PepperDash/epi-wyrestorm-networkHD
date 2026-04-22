@@ -9,7 +9,7 @@ namespace PepperDash.Essentials.Plugin
     public MakeModelDeviceFactory()
     {
       MinimumEssentialsFrameworkVersion = "2.12.1";
-      TypeNames = new List<string>() { "nhd-150-rs", "nhd150rs", "nhd-120-tx", "nhd120tx", "nhd-ctl-pro", "nhdctlpro" };
+      TypeNames = new List<string>() { "nhd-150-rs", "Nhd150Rx", "nhd-120-tx", "nhd120tx", "nhd-ctl-pro", "nhdctlpro" };
     }
 
     public override EssentialsDevice BuildDevice(PepperDash.Essentials.Core.Config.DeviceConfig dc)
@@ -37,9 +37,9 @@ namespace PepperDash.Essentials.Plugin
       }
 
       var type = dc.Type.ToLowerInvariant();
-      if (type == "nhd-150-rs" || type == "nhd150rs")
+      if (type == "nhd-150-rs" || type == "Nhd150Rx")
       {
-        return new Nhd150Rs(dc.Key, dc.Name, propertiesConfig, comms);
+        return new Nhd150Rx(dc.Key, dc.Name, propertiesConfig, comms);
       }
       if (type == "nhd-120-tx" || type == "nhd120tx")
       {

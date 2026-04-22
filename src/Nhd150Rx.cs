@@ -3,9 +3,9 @@ using PepperDash.Core;
 
 namespace PepperDash.Essentials.Plugin
 {
-	public class Nhd150Rs : WyreStormNetworkHdBaseDevice
+	public class Nhd150Rx : WyreStormNetworkHdBaseDevice
 	{
-		public Nhd150Rs(string key, string name, MakeModelConfig config, IBasicCommunication comms)
+		public Nhd150Rx(string key, string name, MakeModelConfig config, IBasicCommunication comms)
 			: base(key, name, config, comms, "NHD-150-RS")
 		{
 			AddInputPort("stream", 1);
