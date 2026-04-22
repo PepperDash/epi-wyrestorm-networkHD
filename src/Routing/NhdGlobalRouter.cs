@@ -92,7 +92,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         {
             InputSlots = DeviceManager
                 .AllDevices.OfType<NhdBaseDevice>()
-                .Where(d => d.InternalConfig.DeviceIsTransmitter())
+                .Where(d => d.IsTransmitter)
                 .Select(d => new NhdMatrixInput(d))
                 .Cast<IRoutingInputSlot>()
                 .ToDictionary(i => i.Key, i => i);
@@ -104,7 +104,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
 
             OutputSlots = DeviceManager
                 .AllDevices.OfType<NhdBaseDevice>()
-                .Where(d => !d.InternalConfig.DeviceIsTransmitter())
+                .Where(d => !d.IsTransmitter)
                 .Select(d => new NhdMatrixOutput(d))
                 .Cast<IRoutingOutputSlot>()
                 .ToDictionary(o => o.Key, o => o);
