@@ -29,6 +29,12 @@ namespace PepperDash.Essentials.Plugin
 
 		public void ExecuteSwitch(object inputSelector, object outputSelector, eRoutingSignalType signalType)
 		{
+			if (signalType != eRoutingSignalType.AudioVideo)
+			{
+				Debug.LogError("[{0}] Unsupported signal type '{1}' for switch operation", Key, signalType);
+				return;
+			}
+
 			var inputPort = inputSelector as RoutingInputPort;
 			if (inputPort == null)
 			{
