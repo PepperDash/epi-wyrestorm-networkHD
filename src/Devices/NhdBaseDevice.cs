@@ -1,11 +1,10 @@
 ﻿using System.Collections.Generic;
 using PepperDash.Core;
 using PepperDash.Essentials.Core;
-using PepperDash.Essentials.Core.Bridges;
 
 namespace PepperDash.Essentials.Plugin
 {
-	public abstract class NhdBaseDevice : EssentialsBridgeableDevice, IRoutingWithFeedback
+	public abstract class NhdBaseDevice : EssentialsDevice, IRoutingWithFeedback
 	{
 		private const eRoutingPortConnectionType DefaultPortConnectionType = eRoutingPortConnectionType.None;
 
@@ -14,10 +13,13 @@ namespace PepperDash.Essentials.Plugin
 		{
 			Config = config;
 			ModelName = modelName;
+			DeviceId = config.DeviceId;
 		}
 
 		protected NhdDeviceProperties Config { get; private set; }
+		internal NhdDeviceProperties InternalConfig => Config;
 		public string ModelName { get; private set; }
+		public int DeviceId { get; private set; }
 
 		public RoutingPortCollection<RoutingInputPort> InputPorts { get; } = new RoutingPortCollection<RoutingInputPort>();
 		public RoutingPortCollection<RoutingOutputPort> OutputPorts { get; } = new RoutingPortCollection<RoutingOutputPort>();

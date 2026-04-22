@@ -1,0 +1,119 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using PepperDash.Core;
+using PepperDash.Core.Logging;
+using PepperDash.Essentials.Core;
+using PepperDash.Essentials.Core.Routing;
+
+namespace PepperDash.Essentials.Plugin.Routing;
+
+public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
+{
+    private static readonly NhdGlobalRouter _instance = new();
+
+    public const string InstanceKey = "NhdRouter";
+    public const string RouteOff = "$off";
+    public const string NoSourceText = "No Source";
+
+    private NhdGlobalRouter()
+        : base(InstanceKey)
+    {
+        InputPorts = new RoutingPortCollection<RoutingInputPort>();
+        OutputPorts = new RoutingPortCollection<RoutingOutputPort>();
+
+        InputSlots = new Dictionary<string, IRoutingInputSlot>();
+        OutputSlots = new Dictionary<string, IRoutingOutputSlot>();
+
+        AddPostActivationAction(BuildMatrixRouting);
+    }
+
+    public static NhdGlobalRouter Instance => _instance;
+
+    public RoutingPortCollection<RoutingInputPort> InputPorts { get; private set; }
+    public RoutingPortCollection<RoutingOutputPort> OutputPorts { get; private set; }
+
+    public Dictionary<string, IRoutingInputSlot> InputSlots { get; private set; }
+    public Dictionary<string, IRoutingOutputSlot> OutputSlots { get; private set; }
+
+    public void ExecuteSwitch(object inputSelector, object outputSelector, eRoutingSignalType signalType)
+    {
+        if (outputSelector is not NhdMatrixOutput output)
+        {
+            this.LogError("Output selector is not NhdMatrixOutput");
+            return;
+        }
+
+        if (inputSelector is not IRoutingInputSlot inputSlot)
+        {
+            this.LogError("Input selector is not IRoutingInputSlot");
+            return;
+        }
+
+        // TODO: send routing command to the output device over comms
+        if (signalType.Has(eRoutingSignalType.Video))
+            output.SetInputRoute(eRoutingSignalType.Video, inputSlot);
+
+        if (signalType.Has(eRoutingSignalType.Audio))
+            output.SetInputRoute(eRoutingSignalType.Audio, inputSlot);
+    }
+
+    public void ExecuteNumericSwitch(ushort input, ushort output, eRoutingSignalType type)
+    {
+        throw new NotImplementedException("ExecuteNumericSwitch");
+    }
+
+    public void Route(string inputSlotKey, string outputSlotKey, eRoutingSignalType type)
+    {
+        if (!InputSlots.TryGetValue(inputSlotKey, out var inputSlot))
+        {
+            this.LogError("Unable to find input slot with key {0}", inputSlotKey);
+            return;
+        }
+
+        if (!OutputSlots.TryGetValue(outputSlotKey, out var outputSlot))
+        {
+            this.LogError("Unable to find output slot with key {0}", outputSlotKey);
+            return;
+        }
+
+        if (outputSlot is not NhdMatrixOutput output)
+        {
+            Debug.LogMessage(Serilog.Events.LogEventLevel.Error, "Output with key {key} is not NhdMatrixOutput", this, outputSlotKey);
+            return;
+        }
+
+        ExecuteSwitch(inputSlot, output, type);
+    }
+
+    private void BuildMatrixRouting()
+    {
+        try
+        {
+            InputSlots = DeviceManager
+                .AllDevices.OfType<NhdBaseDevice>()
+                .Where(d => d.InternalConfig.DeviceIsTransmitter())
+                .Select(d => new NhdMatrixInput(d))
+                .Cast<IRoutingInputSlot>()
+                .ToDictionary(i => i.Key, i => i);
+
+            var clearInput = new NhdMatrixClearInput();
+            InputSlots.Add(clearInput.Key, clearInput);
+
+            this.LogDebug("Total inputs: {count}", InputSlots.Count);
+
+            OutputSlots = DeviceManager
+                .AllDevices.OfType<NhdBaseDevice>()
+                .Where(d => !d.InternalConfig.DeviceIsTransmitter())
+                .Select(d => new NhdMatrixOutput(d))
+                .Cast<IRoutingOutputSlot>()
+                .ToDictionary(o => o.Key, o => o);
+
+            this.LogDebug("Total outputs: {count}", OutputSlots.Count);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogMessage(ex, "Exception building MatrixRouting: {message}", this, ex.Message);
+        }
+    }
+}

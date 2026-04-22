@@ -11,6 +11,7 @@ namespace PepperDash.Essentials.Plugin
             return config.Properties.ToObject<NhdDeviceProperties>();
         }
 
+        public int DeviceId { get; set; }
         public ControlPropertiesConfig Control { get; set; }
         public string Mode { get; set; }
         public string StreamUrl { get; set; }

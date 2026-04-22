@@ -1,0 +1,32 @@
+using System;
+using PepperDash.Core;
+using PepperDash.Essentials.Core;
+using PepperDash.Essentials.Core.Routing;
+
+namespace PepperDash.Essentials.Plugin.Routing;
+
+public class NhdMatrixInput : IRoutingInputSlot
+{
+    private readonly NhdBaseDevice _device;
+
+    public NhdMatrixInput(NhdBaseDevice device)
+    {
+        _device = device;
+    }
+
+    public string TxDeviceKey => _device.Key;
+
+    public int SlotNumber => _device.DeviceId;
+
+    public eRoutingSignalType SupportedSignalTypes => eRoutingSignalType.AudioVideo;
+
+    public string Name => _device.Name;
+
+    public BoolFeedback IsOnline => _device.IsOnline;
+
+    public bool VideoSyncDetected => false; // TODO: wire up sync feedback when comms is implemented
+
+    public string Key => _device.Key;
+
+    public event EventHandler VideoSyncChanged;
+}

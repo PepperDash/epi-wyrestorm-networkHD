@@ -1,12 +1,19 @@
 using PepperDash.Core;
 using PepperDash.Essentials.Core;
 using PepperDash.Essentials.Core.Config;
+using PepperDash.Essentials.Plugin.Routing;
 
 namespace PepperDash.Essentials.Plugin
 {
     public abstract class NhdBaseDeviceFactory<T> : EssentialsPluginDeviceFactory<T> where T : NhdBaseDevice
     {
         public const string MinimumEssentialsVersion = "2.12.1";
+
+        static NhdBaseDeviceFactory()
+        {
+            if (DeviceManager.GetDeviceForKey(NhdGlobalRouter.InstanceKey) == null)
+                DeviceManager.AddDevice(NhdGlobalRouter.Instance);
+        }
 
         protected static NhdDeviceProperties GetProperties(DeviceConfig dc)
         {
