@@ -6,18 +6,18 @@
 		<TargetFramework>net472</TargetFramework>
 		<RootNamespace>PepperDash.Essentials.Plugin</RootNamespace>
 		<Deterministic>false</Deterministic>
-		<AssemblyTitle>PepperDash.Essentials.Plugin.Make.Model</AssemblyTitle>
+		<AssemblyTitle>PepperDash.Essentials.Plugin.WyreStorm.NetworkHD</AssemblyTitle>
 		<Company>PepperDash Technology</Company>
-		<Description>This software is a template for a PepperDash Essentials Plugin.</Description>
+		<Description>Essentials plugin for WyreStorm NetworkHD devices.</Description>
 		<Copyright>Copyright 2025</Copyright>
 		<Version>1.0.0-local</Version>
 		<GenerateAssemblyInfo>true</GenerateAssemblyInfo>
 		<InformationalVersion>$(Version)</InformationalVersion>
 		<OutputPath>bin\$(Configuration)\</OutputPath>
 		<Authors>PepperDash Technology</Authors>
-		<PackageId>Pepperdash.Essentials.Plugins.Template</PackageId>
-		<PackageProjectUrl>https://github.com/PepperDash/EssentialsPluginTemplate.git</PackageProjectUrl>
-		<PackageTags>crestron 4series essentials plugin template</PackageTags>
+		<PackageId>PepperDash.Essentials.Plugin.WyreStorm.NetworkHD</PackageId>
+		<PackageProjectUrl>https://github.com/PepperDash/epi-wyrestorm-networkHD.git</PackageProjectUrl>
+		<PackageTags>crestron 4series essentials plugin wyrestorm networkhd</PackageTags>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">

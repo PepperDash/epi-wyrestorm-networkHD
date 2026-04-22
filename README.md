@@ -1,6 +1,6 @@
 ![PepperDash Essentials Pluign Logo](/images/essentials-plugin-blue.png)
 
-# Essentials Plugin Template (c) 2025
+# WyreStorm NetworkHD Essentials Plugin (c) 2025
 
 ## License
 
@@ -8,16 +8,13 @@ Provided under MIT license
 
 ## Overview
 
-Fork this repo when creating a new plugin for Essentials. For more information about plugins, refer to the Essentials Wiki [Plugins](https://pepperdash.github.io/Essentials/docs/Plugins.html) article.
+This plugin currently supports the following WyreStorm NetworkHD device types:
 
-This repo contains example classes for the three main categories of devices:
-* `MakeModelDevice`: Used for most third party devices which require communication over a streaming mechanism such as a Com port, TCP/SSh/UDP socket, CEC, etc
-* `MakeModelLogicDevice`:  Used for devices that contain logic, but don't require any communication with third parties outside the program
-* `MakeModelCrestronDevice`:  Used for devices that represent a piece of Crestron hardware
+* `NHD-150-RS` decoder
+* `NHD-120-TX` encoder
+* `NHD-CTL-PRO` controller
 
-There are matching factory classes for each of the three categories of devices.  The `MakeModelConfigObject` should be used as a template and modified for any of the categories of device.  Same goes for the `MakeModeleBridgeJoinMap`.
-
-This also illustrates how a plugin can contain multiple devices.
+All supported devices implement `IRoutingWithFeedback`.
 
 ## Cloning Instructions
 
