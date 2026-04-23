@@ -11,7 +11,7 @@ namespace PepperDash.Essentials.Plugin
 		public override bool Supports232 => false;
 
 		public IBasicCommunication Comms { get; private set; }
-		private NhdCtlSessionManager SessionManager { get; set; }
+		public NhdCtlSessionManager SessionManager { get; private set; }
 
 		public NhdCtlPro(string key, string name, NhdDeviceProperties config, IBasicCommunication comms)
 			: base(key, name, config, "NHD-CTL-PRO")

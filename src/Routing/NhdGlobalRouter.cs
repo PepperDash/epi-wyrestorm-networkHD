@@ -96,6 +96,245 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         ExecuteSwitch(inputSlot, output, type);
     }
 
+    public bool ActivateMultiviewLayout(string outputSlotKey, string layoutName)
+    {
+        if (!OutputSlots.TryGetValue(outputSlotKey, out var outputSlot))
+        {
+            this.LogError("Unable to find multiview output slot with key {0}", outputSlotKey);
+            return false;
+        }
+
+        if (outputSlot is not NhdMatrixOutput output)
+        {
+            this.LogError("Output slot with key {0} is not NhdMatrixOutput", outputSlotKey);
+            return false;
+        }
+
+        if (!output.Device.SupportsMultiview)
+        {
+            this.LogError("Endpoint '{key}' does not support multiview preset layouts", output.Device.Key);
+            return false;
+        }
+
+        var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
+        if (ctl?.SessionManager == null)
+        {
+            this.LogError("NHD-CTL session manager is not available for multiview layout activation");
+            return false;
+        }
+
+        return ctl.SessionManager.TryActivateMultiviewLayout(this, output.Device, layoutName);
+    }
+
+    public bool TryGetTrackedMultiviewLayout(string outputSlotKey, out string layoutName, out bool inferred)
+    {
+        layoutName = null;
+        inferred = false;
+
+        if (!OutputSlots.TryGetValue(outputSlotKey, out var outputSlot))
+        {
+            this.LogError("Unable to find multiview output slot with key {0}", outputSlotKey);
+            return false;
+        }
+
+        if (outputSlot is not NhdMatrixOutput output)
+        {
+            this.LogError("Output slot with key {0} is not NhdMatrixOutput", outputSlotKey);
+            return false;
+        }
+
+        if (!output.Device.SupportsMultiview)
+        {
+            this.LogError("Endpoint '{key}' does not support multiview preset layouts", output.Device.Key);
+            return false;
+        }
+
+        layoutName = output.Device.ActivePresetMultiviewLayoutName;
+        inferred = output.Device.ActivePresetMultiviewLayoutInferred;
+        return !string.IsNullOrWhiteSpace(layoutName);
+    }
+
+    public bool ProbeAndLearnMultiviewLayouts(string outputSlotKey)
+    {
+        if (!OutputSlots.TryGetValue(outputSlotKey, out var outputSlot))
+        {
+            this.LogError("Unable to find multiview output slot with key {0}", outputSlotKey);
+            return false;
+        }
+
+        if (outputSlot is not NhdMatrixOutput output)
+        {
+            this.LogError("Output slot with key {0} is not NhdMatrixOutput", outputSlotKey);
+            return false;
+        }
+
+        if (!output.Device.SupportsMultiview)
+        {
+            this.LogError("Endpoint '{key}' does not support multiview preset layouts", output.Device.Key);
+            return false;
+        }
+
+        var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
+        if (ctl?.SessionManager == null)
+        {
+            this.LogError("NHD-CTL session manager is not available for multiview layout probing");
+            return false;
+        }
+
+        return ctl.SessionManager.TryProbeAndLearnMultiviewLayouts(this, output.Device);
+    }
+
+    public bool RouteMultiviewTile(string inputSlotKey, string outputSlotKey, int tileReference)
+    {
+        return RouteMultiviewTile(inputSlotKey, outputSlotKey, null, tileReference);
+    }
+
+    public bool FullscreenMultiviewTile(string outputSlotKey, int sourceTileReference)
+    {
+        if (!OutputSlots.TryGetValue(outputSlotKey, out var outputSlot))
+        {
+            this.LogError("Unable to find multiview output slot with key {0}", outputSlotKey);
+            return false;
+        }
+
+        if (outputSlot is not NhdMatrixOutput output)
+        {
+            this.LogError("Output slot with key {0} is not NhdMatrixOutput", outputSlotKey);
+            return false;
+        }
+
+        if (!output.Device.SupportsMultiview)
+        {
+            this.LogError("Endpoint '{key}' does not support multiview", output.Device.Key);
+            return false;
+        }
+
+        var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
+        if (ctl?.SessionManager == null)
+        {
+            this.LogError("NHD-CTL session manager is not available for multiview fullscreen");
+            return false;
+        }
+
+        return ctl.SessionManager.TryFullscreenMultiviewTile(this, output.Device, sourceTileReference);
+    }
+
+    public bool ReturnFromMultiviewFullscreen(string outputSlotKey)
+    {
+        if (!OutputSlots.TryGetValue(outputSlotKey, out var outputSlot))
+        {
+            this.LogError("Unable to find multiview output slot with key {0}", outputSlotKey);
+            return false;
+        }
+
+        if (outputSlot is not NhdMatrixOutput output)
+        {
+            this.LogError("Output slot with key {0} is not NhdMatrixOutput", outputSlotKey);
+            return false;
+        }
+
+        if (!output.Device.SupportsMultiview)
+        {
+            this.LogError("Endpoint '{key}' does not support multiview", output.Device.Key);
+            return false;
+        }
+
+        var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
+        if (ctl?.SessionManager == null)
+        {
+            this.LogError("NHD-CTL session manager is not available for multiview fullscreen return");
+            return false;
+        }
+
+        return ctl.SessionManager.TryReturnFromMultiviewFullscreen(this, output.Device);
+    }
+
+    public bool TryGetMultiviewFullscreenReturnLayout(string outputSlotKey, out string layoutName)
+    {
+        layoutName = null;
+
+        if (!OutputSlots.TryGetValue(outputSlotKey, out var outputSlot))
+        {
+            this.LogError("Unable to find multiview output slot with key {0}", outputSlotKey);
+            return false;
+        }
+
+        if (outputSlot is not NhdMatrixOutput output)
+        {
+            this.LogError("Output slot with key {0} is not NhdMatrixOutput", outputSlotKey);
+            return false;
+        }
+
+        if (!output.Device.SupportsMultiview)
+        {
+            this.LogError("Endpoint '{key}' does not support multiview", output.Device.Key);
+            return false;
+        }
+
+        var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
+        if (ctl?.SessionManager == null)
+        {
+            this.LogError("NHD-CTL session manager is not available for multiview fullscreen return query");
+            return false;
+        }
+
+        return ctl.SessionManager.TryGetMultiviewFullscreenReturnLayout(output.Device, out layoutName);
+    }
+
+    public bool RouteMultiviewTile(string inputSlotKey, string outputSlotKey, string layoutName, int tileReference)
+    {
+        if (!InputSlots.TryGetValue(inputSlotKey, out var inputSlot))
+        {
+            this.LogError("Unable to find multiview input slot with key {0}", inputSlotKey);
+            return false;
+        }
+
+        if (!OutputSlots.TryGetValue(outputSlotKey, out var outputSlot))
+        {
+            this.LogError("Unable to find multiview output slot with key {0}", outputSlotKey);
+            return false;
+        }
+
+        if (inputSlot is not NhdMatrixInput input)
+        {
+            this.LogError("Input slot with key {0} is not NhdMatrixInput", inputSlotKey);
+            return false;
+        }
+
+        if (outputSlot is not NhdMatrixOutput output)
+        {
+            this.LogError("Output slot with key {0} is not NhdMatrixOutput", outputSlotKey);
+            return false;
+        }
+
+        if (!output.Device.SupportsMultiview)
+        {
+            this.LogError("Endpoint '{key}' does not support multiview tile routing", output.Device.Key);
+            return false;
+        }
+
+        var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
+        if (ctl?.SessionManager == null)
+        {
+            this.LogError("NHD-CTL session manager is not available for guarded multiview tile routing");
+            return false;
+        }
+
+        var sentImmediately = ctl.SessionManager.TryRouteMultiviewTile(this, input.Device, output.Device, layoutName, tileReference);
+
+        if (!sentImmediately)
+        {
+            this.LogInformation(
+                "Multiview tile route queued pending state verification. tx='{tx}', rx='{rx}', layout='{layout}', tile={tile}",
+                input.Device.Key,
+                output.Device.Key,
+                string.IsNullOrWhiteSpace(layoutName) ? output.Device.ActivePresetMultiviewLayoutName : layoutName,
+                tileReference);
+        }
+
+        return sentImmediately;
+    }
+
     private void BuildMatrixRouting()
     {
         try
