@@ -35,6 +35,7 @@ namespace PepperDash.Essentials.Plugin.Comms
         private static readonly TimeSpan MultiviewRefreshThrottle = TimeSpan.FromSeconds(2);
         private static readonly TimeSpan MsceneListRefreshThrottle = TimeSpan.FromSeconds(10);
         private static readonly TimeSpan PendingTileRouteExpiry = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan FullscreenRouteClearBypassWindow = TimeSpan.FromSeconds(10);
 
         private sealed class PendingMultiviewTileRoute
         {
@@ -69,6 +70,14 @@ namespace PepperDash.Essentials.Plugin.Comms
             public DateTime CapturedUtc { get; set; }
         }
 
+        private sealed class RecentFullscreenRoute
+        {
+            public string TxReference { get; set; }
+            public string LayoutName { get; set; }
+            public int TileReference { get; set; }
+            public DateTime RequestedUtc { get; set; }
+        }
+
         private readonly NhdCtlPro _ctl;
         private readonly CommunicationGather _gather;
         private readonly Dictionary<string, PendingMultiviewTileRoute> _pendingTileRoutes = new Dictionary<string, PendingMultiviewTileRoute>(StringComparer.OrdinalIgnoreCase);
@@ -79,6 +88,7 @@ namespace PepperDash.Essentials.Plugin.Comms
         private readonly Dictionary<string, PendingMultiviewFullscreen> _pendingFullscreen = new Dictionary<string, PendingMultiviewFullscreen>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _pendingFullscreenReturns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, MultiviewFullscreenReturnState> _fullscreenReturnStates = new Dictionary<string, MultiviewFullscreenReturnState>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, RecentFullscreenRoute> _recentFullscreenRoutes = new Dictionary<string, RecentFullscreenRoute>(StringComparer.OrdinalIgnoreCase);
 
         private bool _isParsingMviewInformation;
         private bool _isParsingMsceneList;
@@ -171,7 +181,10 @@ namespace PepperDash.Essentials.Plugin.Comms
                 var sent = NhdApiCommandSender.TrySend(source, command);
                 if (sent)
                 {
-                    ClearFullscreenReturnState(rxEndpoint, "tile route changed");
+                    if (!ShouldBypassFullscreenReturnClearForRoute(rxEndpoint, txEndpoint.ApiEndpointReference, trimmedLayout, tileReference))
+                    {
+                        ClearFullscreenReturnState(rxEndpoint, "tile route changed");
+                    }
                 }
 
                 return sent;
@@ -528,6 +541,14 @@ namespace PepperDash.Essentials.Plugin.Comms
                     var routeSent = NhdApiCommandSender.TrySend(_ctl, command);
                     if (routeSent)
                     {
+                        _recentFullscreenRoutes[endpoint.Key] = new RecentFullscreenRoute
+                        {
+                            TxReference = pendingFullscreen.SourceReference,
+                            LayoutName = "1-1",
+                            TileReference = 1,
+                            RequestedUtc = DateTime.UtcNow,
+                        };
+
                         SetFullscreenReturnState(endpoint, pendingFullscreen.PreviousLayoutName);
                         Debug.LogMessage(
                             Serilog.Events.LogEventLevel.Information,
@@ -539,6 +560,18 @@ namespace PepperDash.Essentials.Plugin.Comms
                     }
                     else
                     {
+                        var rollbackSent = NhdApiCommandSender.TrySend(
+                            _ctl,
+                            $"mscene active {endpoint.ApiEndpointReference} {pendingFullscreen.PreviousLayoutName}");
+
+                        Debug.LogMessage(
+                            Serilog.Events.LogEventLevel.Information,
+                            "$$$$$$$$$$ [{0}] Fullscreen transition route failed; rollback to previous layout '{1}' on endpoint '{2}' was {3}",
+                            _ctl,
+                            pendingFullscreen.PreviousLayoutName,
+                            endpoint.Key,
+                            rollbackSent ? "sent" : "not sent");
+
                         ClearFullscreenReturnState(endpoint, "fullscreen route command failed");
                     }
                 }
@@ -1161,8 +1194,43 @@ namespace PepperDash.Essentials.Plugin.Comms
             var sent = NhdApiCommandSender.TrySend(_ctl, command);
             if (sent)
             {
-                ClearFullscreenReturnState(rxEndpoint, "tile route changed");
+                if (!ShouldBypassFullscreenReturnClearForRoute(rxEndpoint, txEndpoint.ApiEndpointReference, pending.LayoutName, pending.TileReference))
+                {
+                    ClearFullscreenReturnState(rxEndpoint, "tile route changed");
+                }
             }
+        }
+
+        private bool ShouldBypassFullscreenReturnClearForRoute(NhdBaseDevice rxEndpoint, string txReference, string layoutName, int tileReference)
+        {
+            if (rxEndpoint == null)
+                return false;
+
+            if (!_recentFullscreenRoutes.TryGetValue(rxEndpoint.Key, out var recent))
+                return false;
+
+            if (DateTime.UtcNow - recent.RequestedUtc > FullscreenRouteClearBypassWindow)
+            {
+                _recentFullscreenRoutes.Remove(rxEndpoint.Key);
+                return false;
+            }
+
+            var isMatch = tileReference == recent.TileReference
+                && string.Equals(layoutName?.Trim(), recent.LayoutName, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(txReference?.Trim(), recent.TxReference, StringComparison.OrdinalIgnoreCase);
+
+            if (!isMatch)
+                return false;
+
+            _recentFullscreenRoutes.Remove(rxEndpoint.Key);
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ [{0}] Keeping fullscreen return available for endpoint '{1}' because route matches recent fullscreen transition",
+                _ctl,
+                rxEndpoint.Key);
+
+            return true;
         }
 
         private void ExpirePendingTileRoutes()
