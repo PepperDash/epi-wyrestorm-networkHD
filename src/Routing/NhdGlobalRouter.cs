@@ -5,6 +5,7 @@ using PepperDash.Core;
 using PepperDash.Core.Logging;
 using PepperDash.Essentials.Core;
 using PepperDash.Essentials.Core.Routing;
+using PepperDash.Essentials.Plugin.Comms;
 
 namespace PepperDash.Essentials.Plugin.Routing;
 
@@ -51,11 +52,19 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
             return;
         }
 
-        // TODO: send routing command to the output device over comms
-        if (signalType.Has(eRoutingSignalType.Video))
+        var matrixCommand = BuildMatrixSetCommand(inputSlot, output, signalType);
+        if (string.IsNullOrWhiteSpace(matrixCommand))
+        {
+            this.LogError("Unsupported signal type '{signalType}' for matrix command", signalType);
+            return;
+        }
+
+        NhdApiCommandSender.TrySend(this, matrixCommand);
+
+        if (signalType.HasFlag(eRoutingSignalType.Video))
             output.SetInputRoute(eRoutingSignalType.Video, inputSlot);
 
-        if (signalType.Has(eRoutingSignalType.Audio))
+        if (signalType.HasFlag(eRoutingSignalType.Audio))
             output.SetInputRoute(eRoutingSignalType.Audio, inputSlot);
     }
 
@@ -153,5 +162,48 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         {
             Debug.LogMessage(ex, "Exception building tie lines: {message}", null, ex.Message);
         }
+    }
+
+    private static string BuildMatrixSetCommand(IRoutingInputSlot inputSlot, NhdMatrixOutput outputSlot, eRoutingSignalType signalType)
+    {
+        var rxRef = outputSlot.Device.ApiEndpointReference;
+        var txRef = inputSlot is NhdMatrixInput matrixInput
+            ? matrixInput.Device.ApiEndpointReference
+            : "null";
+
+        string prefix;
+        if (signalType == eRoutingSignalType.AudioVideo)
+        {
+            prefix = "matrix set";
+        }
+        else if (signalType == eRoutingSignalType.Video)
+        {
+            prefix = "matrix video set";
+        }
+        else if (signalType == eRoutingSignalType.Audio)
+        {
+            prefix = "matrix audio set";
+        }
+        else if (signalType.HasFlag(NhdRoutingSignalTypes.Ir))
+        {
+            prefix = "matrix infrared set";
+        }
+        else if (signalType.HasFlag(NhdRoutingSignalTypes.Serial))
+        {
+            prefix = "matrix serial set";
+        }
+        else if (
+            signalType.HasFlag(NhdRoutingSignalTypes.UsbInput)
+            || signalType.HasFlag(NhdRoutingSignalTypes.UsbOutput)
+            || signalType.HasFlag(eRoutingSignalType.Usb))
+        {
+            prefix = "matrix usb set";
+        }
+        else
+        {
+            return null;
+        }
+
+        return string.Format("{0} {1} {2}", prefix, txRef, rxRef);
     }
 }

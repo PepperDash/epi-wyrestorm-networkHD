@@ -1,4 +1,5 @@
 using PepperDash.Core;
+using PepperDash.Essentials.Plugin.Comms;
 
 namespace PepperDash.Essentials.Plugin
 {
@@ -9,7 +10,8 @@ namespace PepperDash.Essentials.Plugin
 		public override bool SupportsIr => false;
 		public override bool Supports232 => false;
 
-		protected IBasicCommunication Comms { get; private set; }
+		public IBasicCommunication Comms { get; private set; }
+		private NhdCtlSessionManager SessionManager { get; set; }
 
 		public NhdCtlPro(string key, string name, NhdDeviceProperties config, IBasicCommunication comms)
 			: base(key, name, config, "NHD-CTL-PRO")
@@ -17,6 +19,21 @@ namespace PepperDash.Essentials.Plugin
 			Comms = comms;
 			AddStreamInputPort();
 			AddStreamOutputPort();
+		}
+
+		protected override bool CustomActivate()
+		{
+			var result = base.CustomActivate();
+			if (!result)
+				return false;
+
+			if (Comms != null)
+			{
+				SessionManager = new NhdCtlSessionManager(this);
+				SessionManager.Start();
+			}
+
+			return true;
 		}
 	}
 }

@@ -16,6 +16,8 @@ public class NhdMatrixInput : IRoutingInputSlot
 
     public string TxDeviceKey => _device.Key;
 
+    public NhdBaseDevice Device => _device;
+
     public int SlotNumber => _device.DeviceId;
 
     public eRoutingSignalType SupportedSignalTypes => eRoutingSignalType.AudioVideo;

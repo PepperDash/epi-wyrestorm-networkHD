@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using PepperDash.Core;
 using PepperDash.Essentials.Core;
+using PepperDash.Essentials.Plugin.Comms;
 using PepperDash.Essentials.Plugin.Enums;
 using PepperDash.Essentials.Plugin.Routing;
 
@@ -10,18 +11,27 @@ namespace PepperDash.Essentials.Plugin
 	public abstract class NhdBaseDevice : EssentialsDevice, IRoutingWithFeedback
 	{
 		private NhdMultiStreamMode _multiStreamMode = NhdMultiStreamMode.Tile;
+		private bool _online;
 
 		protected NhdBaseDevice(string key, string name, NhdDeviceProperties config, string modelName)
 			: base(key, name)
 		{
-			Config = config;
+			Config = config ?? new NhdDeviceProperties();
 			ModelName = modelName;
-			DeviceId = config.DeviceId;
+			DeviceId = Config.DeviceId;
+			IsOnline = new BoolFeedback("IsOnline", () => _online);
 		}
 
 		protected NhdDeviceProperties Config { get; private set; }
 		public string ModelName { get; private set; }
 		public int DeviceId { get; private set; }
+		public string ConfiguredAlias => string.IsNullOrWhiteSpace(Config.Alias) ? null : Config.Alias.Trim();
+		public string Hostname { get; private set; }
+		public BoolFeedback IsOnline { get; private set; }
+		public string ApiEndpointReference =>
+			ConfiguredAlias
+			?? Hostname
+			?? Key;
 		public abstract bool IsTransmitter { get; }
 		public abstract bool SupportsCec { get; }
 		public abstract bool SupportsIr { get; }
@@ -53,6 +63,29 @@ namespace PepperDash.Essentials.Plugin
 		public RoutingPortCollection<RoutingOutputPort> OutputPorts { get; } = new RoutingPortCollection<RoutingOutputPort>();
 		public List<RouteSwitchDescriptor> CurrentRoutes { get; } = new List<RouteSwitchDescriptor>();
 		public event RouteChangedEventHandler RouteChanged;
+
+		public void SetResolvedHostname(string hostname)
+		{
+			if (string.IsNullOrWhiteSpace(hostname))
+				return;
+
+			var value = hostname.Trim();
+			if (string.Equals(Hostname, value, StringComparison.OrdinalIgnoreCase))
+				return;
+
+			Hostname = value;
+			Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Hostname resolved to '{1}' (alias='{2}')", this, Hostname, ConfiguredAlias ?? "null");
+		}
+
+		public void SetOnlineState(bool isOnline)
+		{
+			if (_online == isOnline)
+				return;
+
+			_online = isOnline;
+			Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Online state -> {1} (endpointRef='{2}')", this, isOnline ? "ONLINE" : "OFFLINE", ApiEndpointReference);
+			IsOnline.FireUpdate();
+		}
 
 		public void ExecuteSwitch(object inputSelector, object outputSelector, eRoutingSignalType signalType)
 		{
@@ -124,10 +157,10 @@ namespace PepperDash.Essentials.Plugin
 
 		// Control ports
 		protected void AddUsbInputPort()
-			=> InputPorts.Add(new RoutingInputPort(NhdPortKeys.UsbInput, eRoutingSignalType.UsbInput, eRoutingPortConnectionType.Usb, NhdPortKeys.UsbInput, this));
+			=> InputPorts.Add(new RoutingInputPort(NhdPortKeys.UsbInput, NhdRoutingSignalTypes.UsbInput, eRoutingPortConnectionType.UsbC, NhdPortKeys.UsbInput, this));
 
 		protected void AddUsbOutputPort()
-			=> OutputPorts.Add(new RoutingOutputPort(NhdPortKeys.UsbOutput, eRoutingSignalType.UsbOutput, eRoutingPortConnectionType.Usb, NhdPortKeys.UsbOutput, this));
+			=> OutputPorts.Add(new RoutingOutputPort(NhdPortKeys.UsbOutput, NhdRoutingSignalTypes.UsbOutput, eRoutingPortConnectionType.UsbC, NhdPortKeys.UsbOutput, this));
 
 		/// <summary>
 		/// Adds IR routing port(s) based on the configured routing mode.
@@ -140,10 +173,10 @@ namespace PepperDash.Essentials.Plugin
 			switch (mode ?? NhdComPortRoutingMode.NotRoutable)
 			{
 				case NhdComPortRoutingMode.ControlSystem:
-					InputPorts.Add(new RoutingInputPort(NhdPortKeys.IrInput, eRoutingSignalType.IR, eRoutingPortConnectionType.Ir, NhdPortKeys.IrInput, this));
+					InputPorts.Add(new RoutingInputPort(NhdPortKeys.IrInput, NhdRoutingSignalTypes.Ir, eRoutingPortConnectionType.None, NhdPortKeys.IrInput, this));
 					break;
 				case NhdComPortRoutingMode.Device:
-					OutputPorts.Add(new RoutingOutputPort(NhdPortKeys.IrOutput, eRoutingSignalType.IR, eRoutingPortConnectionType.Ir, NhdPortKeys.IrOutput, this));
+					OutputPorts.Add(new RoutingOutputPort(NhdPortKeys.IrOutput, NhdRoutingSignalTypes.Ir, eRoutingPortConnectionType.None, NhdPortKeys.IrOutput, this));
 					break;
 				case NhdComPortRoutingMode.NotRoutable:
 				default:
@@ -162,10 +195,10 @@ namespace PepperDash.Essentials.Plugin
 			switch (mode ?? NhdComPortRoutingMode.NotRoutable)
 			{
 				case NhdComPortRoutingMode.ControlSystem:
-					InputPorts.Add(new RoutingInputPort(NhdPortKeys.Rs232Input, eRoutingSignalType.None, eRoutingPortConnectionType.Com, NhdPortKeys.Rs232Input, this));
+					InputPorts.Add(new RoutingInputPort(NhdPortKeys.Rs232Input, NhdRoutingSignalTypes.Serial, eRoutingPortConnectionType.None, NhdPortKeys.Rs232Input, this));
 					break;
 				case NhdComPortRoutingMode.Device:
-					OutputPorts.Add(new RoutingOutputPort(NhdPortKeys.Rs232Output, eRoutingSignalType.None, eRoutingPortConnectionType.Com, NhdPortKeys.Rs232Output, this));
+					OutputPorts.Add(new RoutingOutputPort(NhdPortKeys.Rs232Output, NhdRoutingSignalTypes.Serial, eRoutingPortConnectionType.None, NhdPortKeys.Rs232Output, this));
 					break;
 				case NhdComPortRoutingMode.NotRoutable:
 				default:
@@ -181,7 +214,15 @@ namespace PepperDash.Essentials.Plugin
 		{
 			if (!SupportsCec && !Supports232)
 				throw new NotSupportedException($"{ModelName} does not support CEC or RS-232 power proxy");
-			// TODO: implement
+
+			if (string.IsNullOrWhiteSpace(state))
+				throw new ArgumentException("state must be 'on' or 'off'", nameof(state));
+
+			var normalized = state.Trim().ToLowerInvariant();
+			if (normalized != "on" && normalized != "off")
+				throw new ArgumentException("state must be 'on' or 'off'", nameof(state));
+
+			NhdApiCommandSender.TrySend(this, $"config set device sinkpower {normalized} {ApiEndpointReference}");
 		}
 
 		/// <summary>
@@ -192,7 +233,15 @@ namespace PepperDash.Essentials.Plugin
 		{
 			if (!SupportsCec)
 				throw new NotSupportedException($"{ModelName} does not support CEC");
-			// TODO: implement
+
+			if (string.IsNullOrWhiteSpace(command))
+				throw new ArgumentException("command must be 'onetouchplay' or 'standby'", nameof(command));
+
+			var normalized = command.Trim().ToLowerInvariant();
+			if (normalized != "onetouchplay" && normalized != "standby")
+				throw new ArgumentException("command must be 'onetouchplay' or 'standby'", nameof(command));
+
+			NhdApiCommandSender.TrySend(this, $"config set device cec {normalized} {ApiEndpointReference}");
 		}
 
 		/// <summary>
@@ -206,7 +255,12 @@ namespace PepperDash.Essentials.Plugin
 				throw new NotSupportedException($"{ModelName} does not support CEC");
 			if (!command.Equals("custom", StringComparison.OrdinalIgnoreCase))
 				throw new ArgumentException("Only 'custom' is valid for the overload with data", nameof(command));
-			// TODO: implement
+			if (string.IsNullOrWhiteSpace(data))
+				throw new ArgumentException("CEC data cannot be empty", nameof(data));
+			if (data.Contains("\""))
+				throw new ArgumentException("CEC data cannot contain quote characters", nameof(data));
+
+			NhdApiCommandSender.TrySend(this, $"cec \"{data.Trim()}\" {ApiEndpointReference}");
 		}
 
 		/// <summary>
@@ -217,7 +271,12 @@ namespace PepperDash.Essentials.Plugin
 		{
 			if (!SupportsIr)
 				throw new NotSupportedException($"{ModelName} does not support IR");
-			// TODO: implement
+			if (string.IsNullOrWhiteSpace(data))
+				throw new ArgumentException("IR data cannot be empty", nameof(data));
+			if (data.Contains("\""))
+				throw new ArgumentException("IR data cannot contain quote characters", nameof(data));
+
+			NhdApiCommandSender.TrySend(this, $"infrared \"{data.Trim()}\" {ApiEndpointReference}");
 		}
 
 		/// <summary>
@@ -228,7 +287,35 @@ namespace PepperDash.Essentials.Plugin
 		{
 			if (!Supports232)
 				throw new NotSupportedException($"{ModelName} does not support RS-232");
-			// TODO: implement using Config.Rs232 comm params
+			if (string.IsNullOrWhiteSpace(data))
+				throw new ArgumentException("RS-232 data cannot be empty", nameof(data));
+			if (data.Contains("\""))
+				throw new ArgumentException("RS-232 data cannot contain quote characters", nameof(data));
+
+			var serial = Config.Rs232 ?? new PepperDash.Essentials.Plugin.Config.Nhd232Properties();
+			var parity = GetParityCode(serial.Parity);
+			var baud = (int)serial.BaudRate;
+			var bits = (int)serial.DataBits;
+			var stop = (int)serial.StopBits;
+
+			var command =
+				$"serial -b {baud}-{bits}{parity}{stop} -r {(serial.AppendCr ? "on" : "off")} -n {(serial.AppendLf ? "on" : "off")} -h {(serial.SendAsHex ? "on" : "off")} \"{data.Trim()}\" {ApiEndpointReference}";
+
+			NhdApiCommandSender.TrySend(this, command);
+		}
+
+		private static string GetParityCode(Parity parity)
+		{
+			switch (parity)
+			{
+				case Parity.Even:
+					return "e";
+				case Parity.Odd:
+					return "o";
+				case Parity.None:
+				default:
+					return "n";
+			}
 		}
 	}
 }
