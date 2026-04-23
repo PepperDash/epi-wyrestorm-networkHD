@@ -31,7 +31,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-    <None Remove="epi-make-model.projectinfo" />
+    <None Remove="epi-wyrestorm-networkHD.projectinfo" />
   </ItemGroup>
 
   <ItemGroup>
