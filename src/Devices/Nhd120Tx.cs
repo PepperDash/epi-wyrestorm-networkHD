@@ -13,7 +13,6 @@ namespace PepperDash.Essentials.Plugin
 			: base(key, name, config, "NHD-120-TX")
 		{
 			AddHdmiInputPort(NhdPortKeys.HdmiInput1);
-			AddHdmiAudioInputPort(NhdPortKeys.HdmiAudioInput1);
 			AddAnalogAudioInputPort();
 			AddStreamOutputPort();
 			AddIrPorts(config.IrRoutingMode);

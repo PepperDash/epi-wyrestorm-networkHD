@@ -8,6 +8,10 @@ namespace PepperDash.Essentials.Plugin.Routing
         public const string HdmiOutput1 = "hdmiOut1";
         public const string HdmiOutput2 = "hdmiOut2";
         public const string Stream = "stream";
+        public const string UsbcInput1 = "usbcIn1";
+        public const string UsbcInput2 = "usbcIn2";
+        public const string UsbcOutput1 = "usbcOut1";
+        public const string UsbcOutput2 = "usbcOut2";
 
         // Audio
         public const string HdmiAudioInput1 = "hdmiAudioIn1";
@@ -17,6 +21,10 @@ namespace PepperDash.Essentials.Plugin.Routing
         public const string AnalogAudioOutput = "analogAudioOut";
         public const string DanteInput = "danteIn";
         public const string DanteOutput = "danteOut";
+        public const string UsbcAudioInput1 = "usbcAudioIn1";
+        public const string UsbcAudioInput2 = "usbcAudioIn2";
+        public const string UsbcAudioOutput1 = "usbcAudioOut1";
+        public const string UsbcAudioOutput2 = "usbcAudioOut2";
 
         // Control
         public const string UsbInput = "usbIn";

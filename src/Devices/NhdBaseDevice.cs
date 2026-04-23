@@ -9,6 +9,8 @@ namespace PepperDash.Essentials.Plugin
 {
 	public abstract class NhdBaseDevice : EssentialsDevice, IRoutingWithFeedback
 	{
+		private NhdMultiStreamMode _multiStreamMode = NhdMultiStreamMode.Tile;
+
 		protected NhdBaseDevice(string key, string name, NhdDeviceProperties config, string modelName)
 			: base(key, name)
 		{
@@ -25,6 +27,28 @@ namespace PepperDash.Essentials.Plugin
 		public abstract bool SupportsIr { get; }
 		public abstract bool Supports232 { get; }
 
+		/// <summary>
+		/// Maximum number of simultaneous stream windows this device can decode. Defaults to 1.
+		/// Override in subclasses that support multi-stream decoding.
+		/// </summary>
+		public virtual int MaxStreamCount => 1;
+
+		/// <summary>
+		/// Runtime multi-stream layout mode for devices that support more than one stream window.
+		/// Setting this on single-stream devices throws an exception.
+		/// </summary>
+		public NhdMultiStreamMode MultiStreamMode
+		{
+			get => _multiStreamMode;
+			set
+			{
+				if (MaxStreamCount <= 1)
+					throw new InvalidOperationException($"{ModelName} does not support multi-stream mode changes");
+
+				_multiStreamMode = value;
+			}
+		}
+
 		public RoutingPortCollection<RoutingInputPort> InputPorts { get; } = new RoutingPortCollection<RoutingInputPort>();
 		public RoutingPortCollection<RoutingOutputPort> OutputPorts { get; } = new RoutingPortCollection<RoutingOutputPort>();
 		public List<RouteSwitchDescriptor> CurrentRoutes { get; } = new List<RouteSwitchDescriptor>();
@@ -32,12 +56,6 @@ namespace PepperDash.Essentials.Plugin
 
 		public void ExecuteSwitch(object inputSelector, object outputSelector, eRoutingSignalType signalType)
 		{
-			if (signalType != eRoutingSignalType.AudioVideo)
-			{
-				Debug.LogError("[{0}] Unsupported signal type '{1}' for switch operation", Key, signalType);
-				return;
-			}
-
 			var inputPort = inputSelector as RoutingInputPort;
 			if (inputPort == null)
 			{
@@ -67,6 +85,12 @@ namespace PepperDash.Essentials.Plugin
 		protected void AddHdmiOutputPort(string key)
 			=> OutputPorts.Add(new RoutingOutputPort(key, eRoutingSignalType.AudioVideo, eRoutingPortConnectionType.Hdmi, key, this));
 
+		protected void AddUsbcInputPort(string key)
+			=> InputPorts.Add(new RoutingInputPort(key, eRoutingSignalType.AudioVideo, eRoutingPortConnectionType.UsbC, key, this));
+
+		protected void AddUsbcOutputPort(string key)
+			=> OutputPorts.Add(new RoutingOutputPort(key, eRoutingSignalType.AudioVideo, eRoutingPortConnectionType.UsbC, key, this));
+
 		protected void AddStreamInputPort()
 			=> InputPorts.Add(new RoutingInputPort(NhdPortKeys.Stream, eRoutingSignalType.AudioVideo, eRoutingPortConnectionType.Streaming, NhdPortKeys.Stream, this));
 
@@ -79,6 +103,12 @@ namespace PepperDash.Essentials.Plugin
 
 		protected void AddHdmiAudioOutputPort(string key)
 			=> OutputPorts.Add(new RoutingOutputPort(key, eRoutingSignalType.Audio, eRoutingPortConnectionType.Hdmi, key, this));
+
+		protected void AddUsbcAudioInputPort(string key)
+			=> InputPorts.Add(new RoutingInputPort(key, eRoutingSignalType.Audio, eRoutingPortConnectionType.UsbC, key, this));
+
+		protected void AddUsbcAudioOutputPort(string key)
+			=> OutputPorts.Add(new RoutingOutputPort(key, eRoutingSignalType.Audio, eRoutingPortConnectionType.UsbC, key, this));
 
 		protected void AddAnalogAudioInputPort()
 			=> InputPorts.Add(new RoutingInputPort(NhdPortKeys.AnalogAudioInput, eRoutingSignalType.Audio, eRoutingPortConnectionType.LineAudio, NhdPortKeys.AnalogAudioInput, this));
