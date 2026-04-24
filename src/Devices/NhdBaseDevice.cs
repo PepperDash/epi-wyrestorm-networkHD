@@ -27,7 +27,19 @@ namespace PepperDash.Essentials.Plugin
 		private readonly Dictionary<int, NhdMultiviewTileState> _activeMultiviewTiles = new Dictionary<int, NhdMultiviewTileState>();
 		private readonly HashSet<string> _availablePresetMultiviewLayouts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		private readonly Dictionary<string, string> _presetLayoutGeometrySignatures = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		private readonly Dictionary<string, PresetMultiviewAudioSetting> _presetLayoutAudioSettings = new Dictionary<string, PresetMultiviewAudioSetting>(StringComparer.OrdinalIgnoreCase);
 		private string _activeMultiviewGeometrySignature;
+		private NhdMultiviewAudioMode _activeMultiviewAudioMode = NhdMultiviewAudioMode.Unknown;
+		private int? _activeMultiviewAudioWindow;
+		private string _activeMultiviewAudioSeparateSourceReference;
+		private string _activeMultiviewAudioSourceReference;
+
+		private sealed class PresetMultiviewAudioSetting
+		{
+			public NhdMultiviewAudioMode Mode { get; set; }
+			public int? WindowReference { get; set; }
+			public string SeparateSourceReference { get; set; }
+		}
 
 		protected NhdBaseDevice(string key, string name, NhdDeviceProperties config, string modelName)
 			: base(key, name)
@@ -53,6 +65,10 @@ namespace PepperDash.Essentials.Plugin
 		public string ActivePresetMultiviewLayoutName { get; private set; }
 		public bool ActivePresetMultiviewLayoutInferred { get; private set; }
 		public DateTime? ActivePresetMultiviewLayoutLastUpdateUtc { get; private set; }
+		public NhdMultiviewAudioMode ActiveMultiviewAudioMode => _activeMultiviewAudioMode;
+		public int? ActiveMultiviewAudioWindow => _activeMultiviewAudioWindow;
+		public string ActiveMultiviewAudioSeparateSourceReference => _activeMultiviewAudioSeparateSourceReference;
+		public string ActiveMultiviewAudioSourceReference => _activeMultiviewAudioSourceReference;
 		public IReadOnlyDictionary<int, NhdMultiviewTileState> ActiveMultiviewTiles => _activeMultiviewTiles;
 		public IReadOnlyCollection<string> AvailablePresetMultiviewLayouts => _availablePresetMultiviewLayouts;
 		public IReadOnlyDictionary<string, string> LearnedPresetLayoutGeometrySignatures => _presetLayoutGeometrySignatures;
@@ -120,6 +136,10 @@ namespace PepperDash.Essentials.Plugin
 				MultiviewStateLastRefreshUtc = null;
 				_activeMultiviewGeometrySignature = null;
 				_activeMultiviewTiles.Clear();
+				_activeMultiviewAudioMode = NhdMultiviewAudioMode.Unknown;
+				_activeMultiviewAudioWindow = null;
+				_activeMultiviewAudioSeparateSourceReference = null;
+				_activeMultiviewAudioSourceReference = null;
 			}
 
 			if (!isOnline)
@@ -195,6 +215,7 @@ namespace PepperDash.Essentials.Plugin
 			}
 
 			_activeMultiviewGeometrySignature = BuildGeometrySignature(normalizedTiles);
+			RefreshActiveMultiviewAudioSourceReference();
 
 			MultiviewStateLastRefreshUtc = DateTime.UtcNow;
 
@@ -213,6 +234,151 @@ namespace PepperDash.Essentials.Plugin
 		public bool TryGetActiveMultiviewTile(int tileReference, out NhdMultiviewTileState tile)
 		{
 			return _activeMultiviewTiles.TryGetValue(tileReference, out tile);
+		}
+
+		public void SetActiveMultiviewAudioWindow(int? windowReference)
+		{
+			SetActiveMultiviewAudioSelection(NhdMultiviewAudioMode.Window, windowReference, null);
+		}
+
+		public void SetActiveMultiviewAudioSeparateSource(string sourceReference)
+		{
+			SetActiveMultiviewAudioSelection(NhdMultiviewAudioMode.Separate, null, sourceReference);
+		}
+
+		public void SetPresetLayoutAudioWindow(string layoutName, int? windowReference)
+		{
+			if (!SupportsMultiview || string.IsNullOrWhiteSpace(layoutName))
+				return;
+
+			var normalizedLayout = layoutName.Trim();
+			var normalizedWindow = NormalizeAudioWindow(windowReference);
+
+			_presetLayoutAudioSettings[normalizedLayout] = new PresetMultiviewAudioSetting
+			{
+				Mode = NhdMultiviewAudioMode.Window,
+				WindowReference = normalizedWindow,
+				SeparateSourceReference = null,
+			};
+
+			Debug.LogMessage(
+				Serilog.Events.LogEventLevel.Information,
+				"$$$$$$$$$$ [{0}] Saved preset audio setting layout='{1}', mode='window', target='{2}'",
+				this,
+				normalizedLayout,
+				normalizedWindow.HasValue ? normalizedWindow.Value.ToString() : "null");
+		}
+
+		public void SetPresetLayoutAudioSeparateSource(string layoutName, string sourceReference)
+		{
+			if (!SupportsMultiview || string.IsNullOrWhiteSpace(layoutName))
+				return;
+
+			var normalizedLayout = layoutName.Trim();
+			var normalizedSource = string.IsNullOrWhiteSpace(sourceReference) ? null : sourceReference.Trim();
+
+			_presetLayoutAudioSettings[normalizedLayout] = new PresetMultiviewAudioSetting
+			{
+				Mode = NhdMultiviewAudioMode.Separate,
+				WindowReference = null,
+				SeparateSourceReference = normalizedSource,
+			};
+
+			Debug.LogMessage(
+				Serilog.Events.LogEventLevel.Information,
+				"$$$$$$$$$$ [{0}] Saved preset audio setting layout='{1}', mode='separate', target='{2}'",
+				this,
+				normalizedLayout,
+				normalizedSource ?? "null");
+		}
+
+		public void ApplyPresetLayoutAudioSetting(string layoutName)
+		{
+			if (!SupportsMultiview || string.IsNullOrWhiteSpace(layoutName))
+				return;
+
+			var normalizedLayout = layoutName.Trim();
+			if (!_presetLayoutAudioSettings.TryGetValue(normalizedLayout, out var setting) || setting == null)
+				return;
+
+			SetActiveMultiviewAudioSelection(setting.Mode, setting.WindowReference, setting.SeparateSourceReference);
+		}
+
+		private void SetActiveMultiviewAudioSelection(NhdMultiviewAudioMode mode, int? windowReference, string sourceReference)
+		{
+			if (!SupportsMultiview)
+				return;
+
+			var normalizedWindow = windowReference;
+			var normalizedSource = string.IsNullOrWhiteSpace(sourceReference) ? null : sourceReference.Trim();
+
+			if (!normalizedWindow.HasValue || normalizedWindow.Value <= 0)
+				normalizedWindow = null;
+			else if (SupportsMultiview && normalizedWindow.Value > MaxStreamCount)
+				normalizedWindow = null;
+
+			if (_activeMultiviewAudioMode == mode
+				&& _activeMultiviewAudioWindow == normalizedWindow
+				&& string.Equals(_activeMultiviewAudioSeparateSourceReference, normalizedSource, StringComparison.OrdinalIgnoreCase))
+				return;
+
+			_activeMultiviewAudioMode = mode;
+			_activeMultiviewAudioWindow = normalizedWindow;
+			_activeMultiviewAudioSeparateSourceReference = mode == NhdMultiviewAudioMode.Separate ? normalizedSource : null;
+			RefreshActiveMultiviewAudioSourceReference();
+
+			Debug.LogMessage(
+				Serilog.Events.LogEventLevel.Information,
+				"$$$$$$$$$$ [{0}] Active multiview audio setting mode='{1}', window='{2}', separateSource='{3}'",
+				this,
+				_activeMultiviewAudioMode,
+				_activeMultiviewAudioWindow.HasValue ? _activeMultiviewAudioWindow.Value.ToString() : "null",
+				_activeMultiviewAudioSeparateSourceReference ?? "null");
+		}
+
+		private int? NormalizeAudioWindow(int? windowReference)
+		{
+			var normalizedWindow = windowReference;
+
+			if (!normalizedWindow.HasValue || normalizedWindow.Value <= 0)
+				return null;
+
+			if (SupportsMultiview && normalizedWindow.Value > MaxStreamCount)
+				return null;
+
+			return normalizedWindow;
+		}
+
+		private void RefreshActiveMultiviewAudioSourceReference()
+		{
+			var newSourceReference = default(string);
+
+			if (_activeMultiviewAudioMode == NhdMultiviewAudioMode.Separate)
+			{
+				newSourceReference = _activeMultiviewAudioSeparateSourceReference;
+			}
+			else if (_activeMultiviewAudioMode == NhdMultiviewAudioMode.Window
+				&& _activeMultiviewAudioWindow.HasValue
+				&& _activeMultiviewTiles.TryGetValue(_activeMultiviewAudioWindow.Value, out var tile)
+				&& tile != null
+				&& !string.IsNullOrWhiteSpace(tile.SourceReference))
+			{
+				newSourceReference = tile.SourceReference;
+			}
+
+			if (string.Equals(_activeMultiviewAudioSourceReference, newSourceReference, StringComparison.OrdinalIgnoreCase))
+				return;
+
+			_activeMultiviewAudioSourceReference = newSourceReference;
+
+			Debug.LogMessage(
+				Serilog.Events.LogEventLevel.Information,
+				"$$$$$$$$$$ [{0}] Active multiview audio source set to '{1}' (mode='{2}', window='{3}', separateSource='{4}')",
+				this,
+				_activeMultiviewAudioSourceReference ?? "null",
+				_activeMultiviewAudioMode,
+				_activeMultiviewAudioWindow.HasValue ? _activeMultiviewAudioWindow.Value.ToString() : "null",
+				_activeMultiviewAudioSeparateSourceReference ?? "null");
 		}
 
 		public void SetAvailablePresetMultiviewLayouts(IEnumerable<string> layoutNames)
@@ -238,6 +404,7 @@ namespace PepperDash.Essentials.Plugin
 			foreach (var staleLayout in staleSignatures)
 			{
 				_presetLayoutGeometrySignatures.Remove(staleLayout);
+				_presetLayoutAudioSettings.Remove(staleLayout);
 			}
 
 			Debug.LogMessage(

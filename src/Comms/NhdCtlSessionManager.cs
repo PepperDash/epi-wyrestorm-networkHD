@@ -21,8 +21,12 @@ namespace PepperDash.Essentials.Plugin.Comms
             "^notify\\s+endpoint\\s+(?<state>[+-])\\s+(?<reference>\\S+)$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+        private static readonly Regex SinkNotifyRegex = new Regex(
+            "^notify\\s+sink\\s+(?<state>[+-]|found|lost|on|off|sync|nosync|present|absent|online|offline|1|0)\\s+(?<reference>\\S+)(?:\\s+\\(.*\\))?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
         private static readonly Regex VideoNotifyRegex = new Regex(
-            "^notify\\s+video\\s+(?:(?<state1>[+-]|on|off|sync|nosync|present|absent|online|offline|1|0)\\s+)?(?<reference>\\S+?)(?:\\s+(?<state2>[+-]|on|off|sync|nosync|present|absent|online|offline|1|0))?$",
+            "^notify\\s+video\\s+(?:(?<state1>[+-]|found|lost|on|off|sync|nosync|present|absent|online|offline|1|0)\\s+)?(?<reference>\\S+?)(?:\\s+(?<state2>[+-]|found|lost|on|off|sync|nosync|present|absent|online|offline|1|0))?(?:\\s+\\(.*\\))?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex MviewInformationLineRegex = new Regex(
@@ -35,6 +39,18 @@ namespace PepperDash.Essentials.Plugin.Comms
 
         private static readonly Regex MsceneActiveResponseRegex = new Regex(
             "^mscene\\s+active\\s+(?<reference>\\S+)\\s+(?<layout>\\S+)\\s+(?<result>success|failure)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex MsceneChangeResponseRegex = new Regex(
+            "^mscene\\s+change\\s+(?<reference>\\S+)\\s+(?<layout>\\S+)\\s+(?<tile>\\d+)\\s+(?<source>\\S+)\\s+(?<result>success|failure)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex MsceneSetAudioResponseRegex = new Regex(
+            "^mscene\\s+set\\s+audio\\s+(?<reference>\\S+)\\s+(?<layout>\\S+)\\s+(?<mode>window|separate)\\s+(?<target>\\S+)\\s+(?<result>success|failure)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex MviewSetAudioResponseRegex = new Regex(
+            "^mview\\s+set\\s+audio\\s+(?<reference>\\S+)\\s+separate\\s+(?<source>\\S+)\\s+(?<result>success|failure)$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex MatrixInformationHeaderRegex = new Regex(
@@ -92,6 +108,13 @@ namespace PepperDash.Essentials.Plugin.Comms
             public string RequestedByKey { get; set; }
         }
 
+        private sealed class StartupProbeRestoreState
+        {
+            public string OriginalLayoutName { get; set; }
+            public string OriginalGeometrySignature { get; set; }
+            public string MatchedOriginalLayoutName { get; set; }
+        }
+
         private sealed class PendingMultiviewFullscreen
         {
             public string PreviousLayoutName { get; set; }
@@ -120,6 +143,7 @@ namespace PepperDash.Essentials.Plugin.Comms
         private readonly Dictionary<string, DateTime> _lastMsceneListRequestUtc = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _pendingLayoutGeometryCapture = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, PendingLayoutProbe> _pendingLayoutProbes = new Dictionary<string, PendingLayoutProbe>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, StartupProbeRestoreState> _startupProbeRestoreStates = new Dictionary<string, StartupProbeRestoreState>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _startupProbeCompleted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, PendingMultiviewFullscreen> _pendingFullscreen = new Dictionary<string, PendingMultiviewFullscreen>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _pendingFullscreenReturns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -481,6 +505,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 RequestedByKey = source.Key,
             };
 
+            CaptureStartupProbeRestoreState(rxEndpoint);
             _pendingLayoutProbes[rxEndpoint.Key] = probe;
 
             Debug.LogMessage(
@@ -493,6 +518,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (!TrySendNextProbeLayout(rxEndpoint))
             {
                 _pendingLayoutProbes.Remove(rxEndpoint.Key);
+                _startupProbeRestoreStates.Remove(rxEndpoint.Key);
                 return false;
             }
 
@@ -511,6 +537,7 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             _pendingLayoutGeometryCapture.Remove(rxEndpoint.Key);
             _pendingLayoutProbes.Remove(rxEndpoint.Key);
+            _startupProbeRestoreStates.Remove(rxEndpoint.Key);
             _startupProbeCompleted.Remove(rxEndpoint.Key);
             rxEndpoint.ClearLearnedPresetLayoutGeometrySignatures();
 
@@ -551,10 +578,22 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (TryHandleMsceneActiveResponseLine(line))
                 return;
 
+            if (TryHandleMsceneChangeResponseLine(line))
+                return;
+
+            if (TryHandleMsceneSetAudioResponseLine(line))
+                return;
+
+            if (TryHandleMviewSetAudioResponseLine(line))
+                return;
+
             if (TryHandleAliasMappingLine(line))
                 return;
 
             if (TryHandleEndpointNotifyLine(line))
+                return;
+
+            if (TryHandleSinkNotifyLine(line))
                 return;
 
             if (TryHandleVideoNotifyLine(line))
@@ -966,6 +1005,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             _pendingMviewTiles.Clear();
             _subscribedNotificationReferences.Clear();
             _lastMatrixRefreshUtc = null;
+            _startupProbeRestoreStates.Clear();
 
             if (wasReady)
             {
@@ -1189,6 +1229,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (success)
             {
                 endpoint.SetActivePresetMultiviewLayout(layout, inferred: false);
+                endpoint.ApplyPresetLayoutAudioSetting(layout);
                 _pendingLayoutGeometryCapture[endpoint.Key] = layout;
 
                 if (NhdBaseDevice.TryInferPresetLayoutShape(layout, out var inferredTileCount, out var inferredMode))
@@ -1234,6 +1275,137 @@ namespace PepperDash.Essentials.Plugin.Comms
                 _ctl,
                 endpoint.Key,
                 layout,
+                success ? "success" : "failure");
+
+            return true;
+        }
+
+        private bool TryHandleMsceneChangeResponseLine(string line)
+        {
+            var match = MsceneChangeResponseRegex.Match(line);
+            if (!match.Success)
+                return false;
+
+            var reference = match.Groups["reference"].Value.Trim();
+            var layout = match.Groups["layout"].Value.Trim();
+            var tile = match.Groups["tile"].Value.Trim();
+            var source = match.Groups["source"].Value.Trim();
+            var success = match.Groups["result"].Value.Equals("success", StringComparison.OrdinalIgnoreCase);
+
+            var endpoint = ResolveEndpoint(reference);
+            if (endpoint == null)
+            {
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{0}] mscene change unresolved endpoint='{1}', layout='{2}', tile='{3}', source='{4}', result='{5}'",
+                    _ctl,
+                    reference,
+                    layout,
+                    tile,
+                    source,
+                    success ? "success" : "failure");
+                return true;
+            }
+
+            if (success)
+            {
+                endpoint.SetActivePresetMultiviewLayout(layout, inferred: false);
+                endpoint.ApplyPresetLayoutAudioSetting(layout);
+                _pendingLayoutGeometryCapture[endpoint.Key] = layout;
+
+                if (NhdBaseDevice.TryInferPresetLayoutShape(layout, out var inferredTileCount, out var inferredMode))
+                {
+                    endpoint.SetMultiviewRuntimeState(inferredMode, inferredTileCount);
+                }
+
+                RequestMultiviewState(endpoint, force: true);
+                ClearFullscreenReturnState(endpoint, "layout tile changed");
+            }
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ [{0}] mscene change endpoint='{1}', layout='{2}', tile='{3}', source='{4}', result='{5}'",
+                _ctl,
+                endpoint.Key,
+                layout,
+                tile,
+                source,
+                success ? "success" : "failure");
+
+            return true;
+        }
+
+        private bool TryHandleMsceneSetAudioResponseLine(string line)
+        {
+            var match = MsceneSetAudioResponseRegex.Match(line);
+            if (!match.Success)
+                return false;
+
+            var reference = match.Groups["reference"].Value.Trim();
+            var layout = match.Groups["layout"].Value.Trim();
+            var mode = match.Groups["mode"].Value.Trim();
+            var target = match.Groups["target"].Value.Trim();
+            var success = match.Groups["result"].Value.Equals("success", StringComparison.OrdinalIgnoreCase);
+
+            var endpoint = ResolveEndpoint(reference);
+            if (success && endpoint != null)
+            {
+                if (mode.Equals("window", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (int.TryParse(target, NumberStyles.Integer, CultureInfo.InvariantCulture, out var audioWindow))
+                        endpoint.SetPresetLayoutAudioWindow(layout, audioWindow);
+                }
+                else if (mode.Equals("separate", StringComparison.OrdinalIgnoreCase))
+                {
+                    endpoint.SetPresetLayoutAudioSeparateSource(layout, target);
+                }
+
+                // mscene set audio writes saved preset configuration and is not live until layout activation.
+                if (string.Equals(endpoint.ActivePresetMultiviewLayoutName, layout, StringComparison.OrdinalIgnoreCase))
+                {
+                    endpoint.ApplyPresetLayoutAudioSetting(layout);
+                    RequestMultiviewState(endpoint, force: true);
+                }
+            }
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ [{0}] mscene set audio reference='{1}', resolvedEndpoint='{2}', layout='{3}', mode='{4}', target='{5}', result='{6}'",
+                _ctl,
+                reference,
+                endpoint?.Key ?? "unresolved",
+                layout,
+                mode,
+                target,
+                success ? "success" : "failure");
+
+            return true;
+        }
+
+        private bool TryHandleMviewSetAudioResponseLine(string line)
+        {
+            var match = MviewSetAudioResponseRegex.Match(line);
+            if (!match.Success)
+                return false;
+
+            var reference = match.Groups["reference"].Value.Trim();
+            var source = match.Groups["source"].Value.Trim();
+            var success = match.Groups["result"].Value.Equals("success", StringComparison.OrdinalIgnoreCase);
+
+            var endpoint = ResolveEndpoint(reference);
+            if (success && endpoint != null)
+            {
+                endpoint.SetActiveMultiviewAudioSeparateSource(source);
+                RequestMultiviewState(endpoint, force: true);
+            }
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ [{0}] mview set audio reference='{1}', resolvedEndpoint='{2}', source='{3}', result='{4}'",
+                _ctl,
+                reference,
+                endpoint?.Key ?? "unresolved",
+                source,
                 success ? "success" : "failure");
 
             return true;
@@ -1335,6 +1507,46 @@ namespace PepperDash.Essentials.Plugin.Comms
             return true;
         }
 
+        private bool TryHandleSinkNotifyLine(string line)
+        {
+            var match = SinkNotifyRegex.Match(line);
+            if (!match.Success)
+                return false;
+
+            var reference = match.Groups["reference"].Value.Trim();
+            var stateToken = match.Groups["state"].Value.Trim();
+
+            EnsureNotificationsSubscribed(reference);
+
+            if (!TryParseVideoNotifyState(stateToken, out var sinkDetected))
+            {
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{0}] Notify sink state could not be parsed: reference='{1}', token='{2}'",
+                    _ctl,
+                    reference,
+                    stateToken);
+                return true;
+            }
+
+            var endpoint = ResolveEndpoint(reference);
+            if (endpoint?.IsTransmitter == true)
+            {
+                endpoint.SetInputSyncState(sinkDetected);
+            }
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ [{0}] Notify sink reference='{1}', state='{2}', resolvedEndpoint='{3}', appliedToSync='{4}'",
+                _ctl,
+                reference,
+                sinkDetected ? "found" : "lost",
+                endpoint?.Key ?? "unresolved",
+                endpoint?.IsTransmitter == true ? "yes" : "no");
+
+            return true;
+        }
+
         private static bool TryParseVideoNotifyState(string token, out bool syncDetected)
         {
             syncDetected = false;
@@ -1343,6 +1555,7 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             var value = token.Trim();
             if (value == "+"
+                || value.Equals("found", StringComparison.OrdinalIgnoreCase)
                 || value.Equals("on", StringComparison.OrdinalIgnoreCase)
                 || value.Equals("sync", StringComparison.OrdinalIgnoreCase)
                 || value.Equals("present", StringComparison.OrdinalIgnoreCase)
@@ -1354,6 +1567,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             }
 
             if (value == "-"
+                || value.Equals("lost", StringComparison.OrdinalIgnoreCase)
                 || value.Equals("off", StringComparison.OrdinalIgnoreCase)
                 || value.Equals("nosync", StringComparison.OrdinalIgnoreCase)
                 || value.Equals("absent", StringComparison.OrdinalIgnoreCase)
@@ -1691,6 +1905,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             _pendingMviewEndpoint.SetMultiviewRuntimeState(_pendingMviewMode, _pendingMviewTiles);
             CaptureOrInferActiveLayout(_pendingMviewEndpoint);
             TryDispatchPendingTileRouteForEndpoint(_pendingMviewEndpoint);
+            TryStartStartupProbeIfReady(_pendingMviewEndpoint);
 
             _pendingMviewEndpoint = null;
             _pendingMviewTiles.Clear();
@@ -1710,6 +1925,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 if (endpoint.TryCaptureActiveLayoutGeometry(recalledLayout))
                 {
                     captured = true;
+                    TryMatchStartupProbeOriginalLayout(endpoint, recalledLayout);
                     Debug.LogMessage(
                         Serilog.Events.LogEventLevel.Information,
                         "$$$$$$$$$$ [{0}] Learned layout geometry endpoint='{1}', layout='{2}'",
@@ -1868,6 +2084,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (probe.RemainingLayouts.Count == 0)
             {
                 _pendingLayoutProbes.Remove(endpoint.Key);
+                TryRestoreLayoutAfterProbe(endpoint);
                 Debug.LogMessage(
                     Serilog.Events.LogEventLevel.Information,
                     "$$$$$$$$$$ [{0}] Multiview layout probe complete endpoint='{1}', attempted={2}, learned={3}",
@@ -1947,6 +2164,12 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (endpoint.AvailablePresetMultiviewLayouts.Count == 0)
                 return;
 
+            if (!endpoint.IsMultiviewStateFresh(MultiviewStateFreshness))
+            {
+                RequestMultiviewState(endpoint, force: true);
+                return;
+            }
+
             if (TryProbeAndLearnMultiviewLayouts(_ctl, endpoint))
             {
                 _startupProbeCompleted.Add(endpoint.Key);
@@ -1963,6 +2186,107 @@ namespace PepperDash.Essentials.Plugin.Comms
             return NhdBaseDevice.TryInferPresetLayoutShape(layoutName, out var tileCount, out _)
                 ? tileCount
                 : int.MaxValue;
+        }
+
+        private void CaptureStartupProbeRestoreState(NhdBaseDevice endpoint)
+        {
+            if (endpoint == null)
+                return;
+
+            _startupProbeRestoreStates[endpoint.Key] = new StartupProbeRestoreState
+            {
+                OriginalLayoutName = string.IsNullOrWhiteSpace(endpoint.ActivePresetMultiviewLayoutName)
+                    ? null
+                    : endpoint.ActivePresetMultiviewLayoutName.Trim(),
+                OriginalGeometrySignature = BuildActiveGeometrySignature(endpoint),
+            };
+        }
+
+        private void TryMatchStartupProbeOriginalLayout(NhdBaseDevice endpoint, string capturedLayout)
+        {
+            if (endpoint == null || string.IsNullOrWhiteSpace(capturedLayout))
+                return;
+
+            if (!_startupProbeRestoreStates.TryGetValue(endpoint.Key, out var state))
+                return;
+
+            if (!string.IsNullOrWhiteSpace(state.MatchedOriginalLayoutName))
+                return;
+
+            if (string.IsNullOrWhiteSpace(state.OriginalGeometrySignature))
+                return;
+
+            var activeSignature = BuildActiveGeometrySignature(endpoint);
+            if (string.IsNullOrWhiteSpace(activeSignature))
+                return;
+
+            if (!string.Equals(activeSignature, state.OriginalGeometrySignature, StringComparison.Ordinal))
+                return;
+
+            state.MatchedOriginalLayoutName = capturedLayout;
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ [{0}] Matched pre-probe receiver state endpoint='{1}' to layout='{2}'",
+                _ctl,
+                endpoint.Key,
+                capturedLayout);
+        }
+
+        private void TryRestoreLayoutAfterProbe(NhdBaseDevice endpoint)
+        {
+            if (endpoint == null)
+                return;
+
+            if (!_startupProbeRestoreStates.TryGetValue(endpoint.Key, out var state))
+                return;
+
+            _startupProbeRestoreStates.Remove(endpoint.Key);
+
+            var restoreLayout = !string.IsNullOrWhiteSpace(state.MatchedOriginalLayoutName)
+                ? state.MatchedOriginalLayoutName
+                : state.OriginalLayoutName;
+
+            if (string.IsNullOrWhiteSpace(restoreLayout))
+            {
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{0}] Probe complete for endpoint='{1}' with no known pre-probe layout to restore",
+                    _ctl,
+                    endpoint.Key);
+                return;
+            }
+
+            if (string.Equals(endpoint.ActivePresetMultiviewLayoutName, restoreLayout, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            if (NhdApiCommandSender.TrySend(_ctl, $"mscene active {endpoint.ApiEndpointReference} {restoreLayout}"))
+            {
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{0}] Restoring pre-probe layout endpoint='{1}', layout='{2}'",
+                    _ctl,
+                    endpoint.Key,
+                    restoreLayout);
+            }
+        }
+
+        private static string BuildActiveGeometrySignature(NhdBaseDevice endpoint)
+        {
+            if (endpoint == null || endpoint.ActiveTileCount <= 0)
+                return null;
+
+            var parts = new List<string>(endpoint.ActiveTileCount);
+            for (var i = 1; i <= endpoint.ActiveTileCount; i++)
+            {
+                if (!endpoint.TryGetActiveMultiviewTile(i, out var tile) || tile == null)
+                    return null;
+
+                parts.Add(string.Format("{0}:{1}_{2}_{3}_{4}", tile.TileNumber, tile.X, tile.Y, tile.Width, tile.Height));
+            }
+
+            return parts.Count == 0
+                ? null
+                : string.Join("|", parts);
         }
 
         private void RequestMultiviewPresetLayouts(NhdBaseDevice endpoint, IKeyed source = null)
