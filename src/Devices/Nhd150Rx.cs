@@ -11,7 +11,7 @@ namespace PepperDash.Essentials.Plugin
 		public override int MaxStreamCount => 9;
 
 		public Nhd150Rx(string key, string name, NhdDeviceProperties config)
-			: base(key, name, config, "NHD-150-RS")
+			: base(key, name, config, "NHD-150-RX")
 		{
 			AddStreamInputPort();
 			AddHdmiOutputPort(NhdPortKeys.HdmiOutput1);

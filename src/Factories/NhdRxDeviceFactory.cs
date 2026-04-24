@@ -9,7 +9,7 @@ namespace PepperDash.Essentials.Plugin
         public NhdRxDeviceFactory()
         {
             MinimumEssentialsFrameworkVersion = MinimumEssentialsVersion;
-            TypeNames = new List<string> { "nhd-150-rs", "nhd150rx" };
+            TypeNames = new List<string> { "nhd-150-rx", "nhd150rx" };
         }
 
         public override EssentialsDevice BuildDevice(DeviceConfig dc)

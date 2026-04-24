@@ -11,20 +11,30 @@ namespace PepperDash.Essentials.Plugin.Comms
         {
             if (string.IsNullOrWhiteSpace(command))
             {
-                Debug.LogError("[{0}] Refusing to send empty NetworkHD command", source.Key);
+                Debug.LogError("[{SourceKey}] Refusing to send empty NetworkHD command", source.Key);
                 return false;
             }
 
             var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
             if (ctl == null)
             {
-                Debug.LogError("[{0}] No NHD-CTL device found. Unable to send command: {1}", source.Key, command);
+                Debug.LogError("[{SourceKey}] No NHD-CTL device found. Unable to send command: {Command}", source.Key, command);
                 return false;
             }
 
             if (ctl.Comms == null)
             {
-                Debug.LogError("[{0}] NHD-CTL comms is null. Unable to send command: {1}", source.Key, command);
+                Debug.LogError("[{SourceKey}] NHD-CTL comms is null. Unable to send command: {Command}", source.Key, command);
+                return false;
+            }
+
+            if (ctl.SessionManager != null && !ctl.SessionManager.IsReadyForApiCommands)
+            {
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Debug,
+                    "Skipping send while CTL session is not ready: {Command}",
+                    source,
+                    command);
                 return false;
             }
 
@@ -34,13 +44,13 @@ namespace PepperDash.Essentials.Plugin.Comms
                 ctl.Comms.Connect();
             }
 
-            var commandWithDelimiter = command.EndsWith("\n", StringComparison.Ordinal)
+            var commandWithDelimiter = command.EndsWith("\r\n", StringComparison.Ordinal)
                 ? command
-                : command + "\n";
+                : command + "\r\n";
 
             ctl.Comms.SendText(commandWithDelimiter);
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] NHD API >> {1}", source, command);
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Debug, "[{0}] NHD API >> {1}", source, command);
+            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ NHD API >> {Command}", source, command);
+            Debug.LogMessage(Serilog.Events.LogEventLevel.Debug, "NHD API >> {Command}", source, command);
             return true;
         }
     }

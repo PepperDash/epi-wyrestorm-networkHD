@@ -12,6 +12,9 @@ namespace PepperDash.Essentials.Plugin
 
 		public IBasicCommunication Comms { get; private set; }
 		public NhdCtlSessionManager SessionManager { get; private set; }
+		public string ApiUsername => string.IsNullOrWhiteSpace(Config?.ApiUsername) ? null : Config.ApiUsername.Trim();
+		public string ApiPassword => Config?.ApiPassword ?? string.Empty;
+		public bool EnableTelnetLoginAutomation => Config?.EnableTelnetLoginAutomation ?? false;
 
 		public NhdCtlPro(string key, string name, NhdDeviceProperties config, IBasicCommunication comms)
 			: base(key, name, config, "NHD-CTL-PRO")

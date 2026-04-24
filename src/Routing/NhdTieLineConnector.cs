@@ -14,19 +14,27 @@ public static class NhdTieLineConnector
         {
             try
             {
-                tx.LogVerbose("Generating TX tie line");
+                tx.LogVerbose("Generating TX tie lines");
 
-                var outputPort = tx.OutputPorts[NhdPortKeys.Stream]
-                    ?? throw new NullReferenceException($"No '{NhdPortKeys.Stream}' output port on TX '{tx.Key}'");
+                foreach (var outputPort in tx.OutputPorts)
+                {
+                    if (outputPort == null || outputPort.Type == 0)
+                        continue;
 
-                var routerInputPort = NhdGlobalRouter.Instance.InputPorts[tx.Key]
-                    ?? throw new NullReferenceException($"No router input port for TX '{tx.Key}'");
+                    var routerPortKey = NhdGlobalRouter.GetRouterInputPortKeyForEndpointPort(tx.Key, outputPort.Key);
+                    var routerInputPort = NhdGlobalRouter.Instance.InputPorts[routerPortKey];
+                    if (routerInputPort == null)
+                    {
+                        tx.LogVerbose("Skipping TX tie line. Router input port missing for endpoint='{endpoint}', port='{port}'", tx.Key, outputPort.Key);
+                        continue;
+                    }
 
-                var tieLine = new TieLine(outputPort, routerInputPort, eRoutingSignalType.AudioVideo);
+                    var tieLine = new TieLine(outputPort, routerInputPort, outputPort.Type);
 
-                tx.LogVerbose("Adding TX tie line {tieLine}", tieLine);
+                    tx.LogVerbose("Adding TX tie line {tieLine}", tieLine);
 
-                TieLineCollection.Default.Add(tieLine);
+                    TieLineCollection.Default.Add(tieLine);
+                }
             }
             catch (Exception ex)
             {
@@ -41,19 +49,27 @@ public static class NhdTieLineConnector
         {
             try
             {
-                rx.LogVerbose("Generating RX tie line");
+                rx.LogVerbose("Generating RX tie lines");
 
-                var inputPort = rx.InputPorts[NhdPortKeys.Stream]
-                    ?? throw new NullReferenceException($"No '{NhdPortKeys.Stream}' input port on RX '{rx.Key}'");
+                foreach (var inputPort in rx.InputPorts)
+                {
+                    if (inputPort == null || inputPort.Type == 0)
+                        continue;
 
-                var routerOutputPort = NhdGlobalRouter.Instance.OutputPorts[rx.Key]
-                    ?? throw new NullReferenceException($"No router output port for RX '{rx.Key}'");
+                    var routerPortKey = NhdGlobalRouter.GetRouterOutputPortKeyForEndpointPort(rx.Key, inputPort.Key);
+                    var routerOutputPort = NhdGlobalRouter.Instance.OutputPorts[routerPortKey];
+                    if (routerOutputPort == null)
+                    {
+                        rx.LogVerbose("Skipping RX tie line. Router output port missing for endpoint='{endpoint}', port='{port}'", rx.Key, inputPort.Key);
+                        continue;
+                    }
 
-                var tieLine = new TieLine(routerOutputPort, inputPort, eRoutingSignalType.AudioVideo);
+                    var tieLine = new TieLine(routerOutputPort, inputPort, inputPort.Type);
 
-                rx.LogVerbose("Adding RX tie line {tieLine}", tieLine);
+                    rx.LogVerbose("Adding RX tie line {tieLine}", tieLine);
 
-                TieLineCollection.Default.Add(tieLine);
+                    TieLineCollection.Default.Add(tieLine);
+                }
             }
             catch (Exception ex)
             {

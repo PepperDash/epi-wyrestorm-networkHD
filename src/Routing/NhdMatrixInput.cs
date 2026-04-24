@@ -12,6 +12,7 @@ public class NhdMatrixInput : IRoutingInputSlot
     public NhdMatrixInput(NhdBaseDevice device)
     {
         _device = device;
+        _device.InputSyncStateChanged += HandleInputSyncStateChanged;
     }
 
     public string TxDeviceKey => _device.Key;
@@ -26,9 +27,14 @@ public class NhdMatrixInput : IRoutingInputSlot
 
     public BoolFeedback IsOnline => _device.IsOnline;
 
-    public bool VideoSyncDetected => false; // TODO: wire up sync feedback when comms is implemented
+    public bool VideoSyncDetected => _device.InputSyncDetectedState;
 
     public string Key => _device.Key;
 
     public event EventHandler VideoSyncChanged;
+
+    private void HandleInputSyncStateChanged(object sender, NhdDeviceBoolStateChangedEventArgs args)
+    {
+        VideoSyncChanged?.Invoke(this, EventArgs.Empty);
+    }
 }

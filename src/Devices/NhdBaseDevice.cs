@@ -9,10 +9,21 @@ using PepperDash.Essentials.Plugin.Routing;
 
 namespace PepperDash.Essentials.Plugin
 {
+	public sealed class NhdDeviceBoolStateChangedEventArgs : EventArgs
+	{
+		public NhdDeviceBoolStateChangedEventArgs(bool value)
+		{
+			Value = value;
+		}
+
+		public bool Value { get; }
+	}
+
 	public abstract class NhdBaseDevice : EssentialsDevice, IRoutingWithFeedback
 	{
 		private NhdMultiStreamMode _multiStreamMode = NhdMultiStreamMode.Tile;
 		private bool _online;
+		private bool _inputSyncDetected;
 		private readonly Dictionary<int, NhdMultiviewTileState> _activeMultiviewTiles = new Dictionary<int, NhdMultiviewTileState>();
 		private readonly HashSet<string> _availablePresetMultiviewLayouts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		private readonly Dictionary<string, string> _presetLayoutGeometrySignatures = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -25,6 +36,7 @@ namespace PepperDash.Essentials.Plugin
 			ModelName = modelName;
 			DeviceId = Config.DeviceId;
 			IsOnline = new BoolFeedback("IsOnline", () => _online);
+			InputSyncDetected = new BoolFeedback("InputSyncDetected", () => _inputSyncDetected);
 		}
 
 		protected NhdDeviceProperties Config { get; private set; }
@@ -34,6 +46,8 @@ namespace PepperDash.Essentials.Plugin
 		public string Hostname { get; private set; }
 		public bool OnlineState => _online;
 		public BoolFeedback IsOnline { get; private set; }
+		public bool InputSyncDetectedState => _inputSyncDetected;
+		public BoolFeedback InputSyncDetected { get; private set; }
 		public int ActiveTileCount { get; private set; }
 		public DateTime? MultiviewStateLastRefreshUtc { get; private set; }
 		public string ActivePresetMultiviewLayoutName { get; private set; }
@@ -78,6 +92,8 @@ namespace PepperDash.Essentials.Plugin
 		public RoutingPortCollection<RoutingOutputPort> OutputPorts { get; } = new RoutingPortCollection<RoutingOutputPort>();
 		public List<RouteSwitchDescriptor> CurrentRoutes { get; } = new List<RouteSwitchDescriptor>();
 		public event RouteChangedEventHandler RouteChanged;
+		public event EventHandler<NhdDeviceBoolStateChangedEventArgs> OnlineStateChanged;
+		public event EventHandler<NhdDeviceBoolStateChangedEventArgs> InputSyncStateChanged;
 
 		public void SetResolvedHostname(string hostname)
 		{
@@ -106,8 +122,32 @@ namespace PepperDash.Essentials.Plugin
 				_activeMultiviewTiles.Clear();
 			}
 
+			if (!isOnline)
+			{
+				SetInputSyncState(false);
+			}
+
 			Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Online state -> {1} (endpointRef='{2}')", this, isOnline ? "ONLINE" : "OFFLINE", ApiEndpointReference);
 			IsOnline.FireUpdate();
+			OnlineStateChanged?.Invoke(this, new NhdDeviceBoolStateChangedEventArgs(isOnline));
+		}
+
+		public void SetInputSyncState(bool hasSync)
+		{
+			if (_inputSyncDetected == hasSync)
+				return;
+
+			_inputSyncDetected = hasSync;
+
+			Debug.LogMessage(
+				Serilog.Events.LogEventLevel.Information,
+				"$$$$$$$$$$ [{0}] Input sync -> {1} (endpointRef='{2}')",
+				this,
+				hasSync ? "DETECTED" : "LOST",
+				ApiEndpointReference);
+
+			InputSyncDetected.FireUpdate();
+			InputSyncStateChanged?.Invoke(this, new NhdDeviceBoolStateChangedEventArgs(hasSync));
 		}
 
 		public bool IsMultiviewStateFresh(TimeSpan maxAge)

@@ -14,6 +14,10 @@ public class NhdMatrixOutput : IRoutingOutputSlot
     {
         { eRoutingSignalType.Audio, default },
         { eRoutingSignalType.Video, default },
+        { NhdRoutingSignalTypes.UsbInput, default },
+        { NhdRoutingSignalTypes.UsbOutput, default },
+        { NhdRoutingSignalTypes.Ir, default },
+        { NhdRoutingSignalTypes.Serial, default },
     };
 
     public NhdMatrixOutput(NhdBaseDevice device)

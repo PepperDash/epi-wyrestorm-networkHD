@@ -10,7 +10,7 @@ Provided under MIT license
 
 This plugin currently supports the following WyreStorm NetworkHD device types:
 
-* `NHD-150-RS` decoder
+* `NHD-150-RX` decoder
 * `NHD-120-TX` encoder
 * `NHD-CTL-PRO` controller
 

@@ -12,6 +12,9 @@ namespace PepperDash.Essentials.Plugin.Routing;
 public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
 {
     private static readonly NhdGlobalRouter _instance = new();
+    private readonly NhdPrimaryStreamDomainRouter _primaryStreamRouter;
+    private readonly NhdUsbDomainRouter _usbRouter;
+    private readonly NhdControlDomainRouter _controlRouter;
 
     public const string InstanceKey = "NhdRouter";
     public const string RouteOff = "$off";
@@ -20,6 +23,10 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
     private NhdGlobalRouter()
         : base(InstanceKey)
     {
+        _primaryStreamRouter = new NhdPrimaryStreamDomainRouter();
+        _usbRouter = new NhdUsbDomainRouter();
+        _controlRouter = new NhdControlDomainRouter();
+
         InputPorts = new RoutingPortCollection<RoutingInputPort>();
         OutputPorts = new RoutingPortCollection<RoutingOutputPort>();
 
@@ -38,6 +45,30 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
     public Dictionary<string, IRoutingInputSlot> InputSlots { get; private set; }
     public Dictionary<string, IRoutingOutputSlot> OutputSlots { get; private set; }
 
+    public static string GetRouterInputPortKeyForEndpointPort(string endpointKey, string endpointPortKey)
+    {
+        if (string.IsNullOrWhiteSpace(endpointKey))
+            return null;
+
+        if (string.IsNullOrWhiteSpace(endpointPortKey)
+            || endpointPortKey.Equals(NhdPortKeys.Stream, StringComparison.OrdinalIgnoreCase))
+            return endpointKey;
+
+        return string.Format("{0}-in-{1}", endpointKey, endpointPortKey);
+    }
+
+    public static string GetRouterOutputPortKeyForEndpointPort(string endpointKey, string endpointPortKey)
+    {
+        if (string.IsNullOrWhiteSpace(endpointKey))
+            return null;
+
+        if (string.IsNullOrWhiteSpace(endpointPortKey)
+            || endpointPortKey.Equals(NhdPortKeys.Stream, StringComparison.OrdinalIgnoreCase))
+            return endpointKey;
+
+        return string.Format("{0}-out-{1}", endpointKey, endpointPortKey);
+    }
+
     public void ExecuteSwitch(object inputSelector, object outputSelector, eRoutingSignalType signalType)
     {
         if (outputSelector is not NhdMatrixOutput output)
@@ -52,25 +83,64 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
             return;
         }
 
-        var matrixCommand = BuildMatrixSetCommand(inputSlot, output, signalType);
-        if (string.IsNullOrWhiteSpace(matrixCommand))
+        var handled = false;
+
+        if (_primaryStreamRouter.TryExecute(this, inputSlot, output, signalType, out var primarySignalType))
         {
-            this.LogError("Unsupported signal type '{signalType}' for matrix command", signalType);
-            return;
+            handled = true;
+            SetTrackedOutputRoutes(output, inputSlot, primarySignalType);
         }
 
-        NhdApiCommandSender.TrySend(this, matrixCommand);
+        if (_usbRouter.TryExecute(this, inputSlot, output, signalType))
+        {
+            handled = true;
+            SetTrackedOutputRoutes(output, inputSlot, NhdRoutingSignalTypes.UsbInput | NhdRoutingSignalTypes.UsbOutput | eRoutingSignalType.Usb);
+        }
 
-        if (signalType.HasFlag(eRoutingSignalType.Video))
-            output.SetInputRoute(eRoutingSignalType.Video, inputSlot);
+        if (_controlRouter.TryExecute(this, inputSlot, output, signalType))
+        {
+            handled = true;
 
-        if (signalType.HasFlag(eRoutingSignalType.Audio))
-            output.SetInputRoute(eRoutingSignalType.Audio, inputSlot);
+            var controlSignalType = (eRoutingSignalType)0;
+            if (signalType.HasFlag(NhdRoutingSignalTypes.Ir))
+                controlSignalType |= NhdRoutingSignalTypes.Ir;
+
+            if (signalType.HasFlag(NhdRoutingSignalTypes.Serial))
+                controlSignalType |= NhdRoutingSignalTypes.Serial;
+
+            if (controlSignalType != 0)
+                SetTrackedOutputRoutes(output, inputSlot, controlSignalType);
+        }
+
+        if (!handled)
+            this.LogError("Unsupported signal type '{signalType}' for matrix command", signalType);
     }
 
     public void ExecuteNumericSwitch(ushort input, ushort output, eRoutingSignalType type)
     {
         throw new NotImplementedException("ExecuteNumericSwitch");
+    }
+
+    public bool TrySetTrackedMatrixRoute(string txEndpointKey, string rxEndpointKey, eRoutingSignalType signalType)
+    {
+        if (string.IsNullOrWhiteSpace(rxEndpointKey))
+            return false;
+
+        if (!OutputSlots.TryGetValue(rxEndpointKey, out var outputSlot))
+            return false;
+
+        if (outputSlot is not NhdMatrixOutput output)
+            return false;
+
+        IRoutingInputSlot inputSlot = null;
+        if (!string.IsNullOrWhiteSpace(txEndpointKey))
+        {
+            if (!InputSlots.TryGetValue(txEndpointKey, out inputSlot))
+                return false;
+        }
+
+        SetTrackedOutputRoutes(output, inputSlot, signalType);
+        return true;
     }
 
     public void Route(string inputSlotKey, string outputSlotKey, eRoutingSignalType type)
@@ -360,25 +430,45 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
 
             this.LogDebug("Total outputs: {count}", OutputSlots.Count);
 
-            // Build router ports so tie lines can connect to them
+            // Build router ports so tie lines can connect to them for each available endpoint routing port.
             foreach (var tx in DeviceManager.AllDevices.OfType<NhdBaseDevice>().Where(d => d.IsTransmitter))
             {
-                InputPorts.Add(new RoutingInputPort(
-                    tx.Key,
-                    eRoutingSignalType.AudioVideo,
-                    eRoutingPortConnectionType.Streaming,
-                    tx,
-                    this));
+                foreach (var endpointOutputPort in tx.OutputPorts)
+                {
+                    var routerPortKey = GetRouterInputPortKeyForEndpointPort(tx.Key, endpointOutputPort.Key);
+                    if (string.IsNullOrWhiteSpace(routerPortKey))
+                        continue;
+
+                    if (InputPorts.Any(p => string.Equals(p.Key, routerPortKey, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+
+                    InputPorts.Add(new RoutingInputPort(
+                        routerPortKey,
+                        endpointOutputPort.Type,
+                        endpointOutputPort.ConnectionType,
+                        tx,
+                        this));
+                }
             }
 
             foreach (var rx in DeviceManager.AllDevices.OfType<NhdBaseDevice>().Where(d => !d.IsTransmitter))
             {
-                OutputPorts.Add(new RoutingOutputPort(
-                    rx.Key,
-                    eRoutingSignalType.AudioVideo,
-                    eRoutingPortConnectionType.Streaming,
-                    rx,
-                    this));
+                foreach (var endpointInputPort in rx.InputPorts)
+                {
+                    var routerPortKey = GetRouterOutputPortKeyForEndpointPort(rx.Key, endpointInputPort.Key);
+                    if (string.IsNullOrWhiteSpace(routerPortKey))
+                        continue;
+
+                    if (OutputPorts.Any(p => string.Equals(p.Key, routerPortKey, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+
+                    OutputPorts.Add(new RoutingOutputPort(
+                        routerPortKey,
+                        endpointInputPort.Type,
+                        endpointInputPort.ConnectionType,
+                        rx,
+                        this));
+                }
             }
         }
         catch (Exception ex)
@@ -403,46 +493,152 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         }
     }
 
-    private static string BuildMatrixSetCommand(IRoutingInputSlot inputSlot, NhdMatrixOutput outputSlot, eRoutingSignalType signalType)
+    private static void SetTrackedOutputRoutes(NhdMatrixOutput output, IRoutingInputSlot inputSlot, eRoutingSignalType signalType)
     {
-        var rxRef = outputSlot.Device.ApiEndpointReference;
-        var txRef = inputSlot is NhdMatrixInput matrixInput
-            ? matrixInput.Device.ApiEndpointReference
-            : "null";
+        if (output == null)
+            return;
 
-        string prefix;
-        if (signalType == eRoutingSignalType.AudioVideo)
+        var hasVideo = signalType.HasFlag(eRoutingSignalType.Video);
+        var hasAudio = signalType.HasFlag(eRoutingSignalType.Audio);
+        if (signalType == eRoutingSignalType.AudioVideo || (hasVideo && hasAudio))
         {
-            prefix = "matrix set";
+            output.SetInputRoute(eRoutingSignalType.Video, inputSlot);
+            output.SetInputRoute(eRoutingSignalType.Audio, inputSlot);
         }
-        else if (signalType == eRoutingSignalType.Video)
+        else
         {
-            prefix = "matrix video set";
+            if (hasVideo)
+                output.SetInputRoute(eRoutingSignalType.Video, inputSlot);
+
+            if (hasAudio)
+                output.SetInputRoute(eRoutingSignalType.Audio, inputSlot);
         }
-        else if (signalType == eRoutingSignalType.Audio)
-        {
-            prefix = "matrix audio set";
-        }
-        else if (signalType.HasFlag(NhdRoutingSignalTypes.Ir))
-        {
-            prefix = "matrix infrared set";
-        }
-        else if (signalType.HasFlag(NhdRoutingSignalTypes.Serial))
-        {
-            prefix = "matrix serial set";
-        }
-        else if (
+
+        if (
             signalType.HasFlag(NhdRoutingSignalTypes.UsbInput)
             || signalType.HasFlag(NhdRoutingSignalTypes.UsbOutput)
             || signalType.HasFlag(eRoutingSignalType.Usb))
         {
-            prefix = "matrix usb set";
-        }
-        else
-        {
-            return null;
+            output.SetInputRoute(NhdRoutingSignalTypes.UsbInput, inputSlot);
+            output.SetInputRoute(NhdRoutingSignalTypes.UsbOutput, inputSlot);
+
+            if (Enum.IsDefined(typeof(eRoutingSignalType), "Usb"))
+                output.SetInputRoute(eRoutingSignalType.Usb, inputSlot);
         }
 
-        return string.Format("{0} {1} {2}", prefix, txRef, rxRef);
+        if (signalType.HasFlag(NhdRoutingSignalTypes.Ir))
+            output.SetInputRoute(NhdRoutingSignalTypes.Ir, inputSlot);
+
+        if (signalType.HasFlag(NhdRoutingSignalTypes.Serial))
+            output.SetInputRoute(NhdRoutingSignalTypes.Serial, inputSlot);
+    }
+
+    private static string GetTxReference(IRoutingInputSlot inputSlot)
+    {
+        return inputSlot is NhdMatrixInput matrixInput
+            ? matrixInput.Device.ApiEndpointReference
+            : "null";
+    }
+
+    private sealed class NhdPrimaryStreamDomainRouter
+    {
+        public bool TryExecute(IKeyed source, IRoutingInputSlot inputSlot, NhdMatrixOutput output, eRoutingSignalType signalType, out eRoutingSignalType routedSignalType)
+        {
+            routedSignalType = 0;
+
+            if (!TryResolveStreamSignalType(signalType, out routedSignalType))
+                return false;
+
+            var txRef = GetTxReference(inputSlot);
+            var rxRef = output.Device.ApiEndpointReference;
+            var prefix = routedSignalType == eRoutingSignalType.AudioVideo
+                ? "matrix set"
+                : routedSignalType == eRoutingSignalType.Video
+                    ? "matrix video set"
+                    : "matrix audio set";
+
+            NhdApiCommandSender.TrySend(source, $"{prefix} {txRef} {rxRef}");
+            return true;
+        }
+
+        private static bool TryResolveStreamSignalType(eRoutingSignalType signalType, out eRoutingSignalType streamType)
+        {
+            streamType = 0;
+
+            if (signalType == eRoutingSignalType.AudioVideo)
+            {
+                streamType = eRoutingSignalType.AudioVideo;
+                return true;
+            }
+
+            var hasVideo = signalType.HasFlag(eRoutingSignalType.Video);
+            var hasAudio = signalType.HasFlag(eRoutingSignalType.Audio);
+
+            if (hasVideo && hasAudio)
+            {
+                streamType = eRoutingSignalType.AudioVideo;
+                return true;
+            }
+
+            if (hasVideo)
+            {
+                streamType = eRoutingSignalType.Video;
+                return true;
+            }
+
+            if (hasAudio)
+            {
+                streamType = eRoutingSignalType.Audio;
+                return true;
+            }
+
+            return false;
+        }
+    }
+
+    private sealed class NhdUsbDomainRouter
+    {
+        public bool TryExecute(IKeyed source, IRoutingInputSlot inputSlot, NhdMatrixOutput output, eRoutingSignalType signalType)
+        {
+            if (!HasUsbSignal(signalType))
+                return false;
+
+            var txRef = GetTxReference(inputSlot);
+            var rxRef = output.Device.ApiEndpointReference;
+
+            NhdApiCommandSender.TrySend(source, $"matrix usb set {txRef} {rxRef}");
+            return true;
+        }
+
+        private static bool HasUsbSignal(eRoutingSignalType signalType)
+        {
+            return signalType.HasFlag(NhdRoutingSignalTypes.UsbInput)
+                || signalType.HasFlag(NhdRoutingSignalTypes.UsbOutput)
+                || signalType.HasFlag(eRoutingSignalType.Usb);
+        }
+    }
+
+    private sealed class NhdControlDomainRouter
+    {
+        public bool TryExecute(IKeyed source, IRoutingInputSlot inputSlot, NhdMatrixOutput output, eRoutingSignalType signalType)
+        {
+            var handled = false;
+            var txRef = GetTxReference(inputSlot);
+            var rxRef = output.Device.ApiEndpointReference;
+
+            if (signalType.HasFlag(NhdRoutingSignalTypes.Ir))
+            {
+                NhdApiCommandSender.TrySend(source, $"matrix infrared set {txRef} {rxRef}");
+                handled = true;
+            }
+
+            if (signalType.HasFlag(NhdRoutingSignalTypes.Serial))
+            {
+                NhdApiCommandSender.TrySend(source, $"matrix serial set {txRef} {rxRef}");
+                handled = true;
+            }
+
+            return handled;
+        }
     }
 }

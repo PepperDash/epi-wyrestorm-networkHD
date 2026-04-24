@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using PepperDash.Core;
 using PepperDash.Essentials.Core;
 using PepperDash.Essentials.Plugin.Enums;
+using PepperDash.Essentials.Plugin.Routing;
 
 namespace PepperDash.Essentials.Plugin.Comms
 {
@@ -17,6 +19,10 @@ namespace PepperDash.Essentials.Plugin.Comms
 
         private static readonly Regex EndpointNotifyRegex = new Regex(
             "^notify\\s+endpoint\\s+(?<state>[+-])\\s+(?<reference>\\S+)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex VideoNotifyRegex = new Regex(
+            "^notify\\s+video\\s+(?:(?<state1>[+-]|on|off|sync|nosync|present|absent|online|offline|1|0)\\s+)?(?<reference>\\S+?)(?:\\s+(?<state2>[+-]|on|off|sync|nosync|present|absent|online|offline|1|0))?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex MviewInformationLineRegex = new Regex(
@@ -31,11 +37,41 @@ namespace PepperDash.Essentials.Plugin.Comms
             "^mscene\\s+active\\s+(?<reference>\\S+)\\s+(?<layout>\\S+)\\s+(?<result>success|failure)$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+        private static readonly Regex MatrixInformationHeaderRegex = new Regex(
+            "^matrix(?:\\s+(?<domain>video|audio|usb|serial|infrared))?\\s+information:$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex MatrixSetResponseRegex = new Regex(
+            "^matrix(?:\\s+(?<domain>video|audio|usb|serial|infrared))?\\s+set\\s+(?<tx>\\S+)\\s+(?<rx>\\S+)\\s+(?<result>success|failure)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex TelnetNegotiationRegex = new Regex(
+            "\\[(?:[0-9A-F]{2}h)\\]",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex TelnetHexTokenRegex = new Regex(
+            "\\[(?<hex>[0-9A-F]{2})h\\]",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private const byte TelnetIac = 0xFF;
+        private const byte TelnetWill = 0xFB;
+        private const byte TelnetWont = 0xFC;
+        private const byte TelnetDo = 0xFD;
+        private const byte TelnetDont = 0xFE;
+
+        private const byte TelnetOptionEcho = 0x01;
+        private const byte TelnetOptionSuppressGoAhead = 0x03;
+
         private static readonly TimeSpan MultiviewStateFreshness = TimeSpan.FromSeconds(10);
         private static readonly TimeSpan MultiviewRefreshThrottle = TimeSpan.FromSeconds(2);
+        private static readonly TimeSpan MatrixRefreshThrottle = TimeSpan.FromSeconds(2);
         private static readonly TimeSpan MsceneListRefreshThrottle = TimeSpan.FromSeconds(10);
         private static readonly TimeSpan PendingTileRouteExpiry = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan FullscreenRouteClearBypassWindow = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan SessionProbeThrottle = TimeSpan.FromSeconds(2);
+        private static readonly TimeSpan CredentialPromptThrottle = TimeSpan.FromSeconds(1);
+        private static readonly TimeSpan LoginFailureThrottle = TimeSpan.FromMilliseconds(500);
+        private static readonly TimeSpan PromptDedupWindow = TimeSpan.FromMilliseconds(10);
 
         private sealed class PendingMultiviewTileRoute
         {
@@ -89,30 +125,44 @@ namespace PepperDash.Essentials.Plugin.Comms
         private readonly Dictionary<string, string> _pendingFullscreenReturns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, MultiviewFullscreenReturnState> _fullscreenReturnStates = new Dictionary<string, MultiviewFullscreenReturnState>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, RecentFullscreenRoute> _recentFullscreenRoutes = new Dictionary<string, RecentFullscreenRoute>(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _subscribedNotificationReferences = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private DateTime? _lastMatrixRefreshUtc;
+        private DateTime? _lastSessionProbeUtc;
+        private DateTime? _lastUserPromptHandledUtc;
+        private DateTime? _lastPasswordPromptHandledUtc;
+        private DateTime? _lastLoginFailureHandledUtc;
+        private DateTime? _lastStandaloneUserPromptSeenUtc;
+        private DateTime? _lastStandalonePasswordPromptSeenUtc;
+        private bool _loginAutomationDisabledNoticeLogged;
+        private bool _isSessionReady;
+        private bool _bootstrapPending;
+        private bool _telnetAwaitingCommand;
+        private bool _telnetAwaitingOption;
+        private byte _telnetPendingCommand;
 
         private bool _isParsingMviewInformation;
+        private bool _isParsingMatrixInformation;
         private bool _isParsingMsceneList;
         private NhdBaseDevice _pendingMviewEndpoint;
         private NhdMultiStreamMode _pendingMviewMode;
         private readonly List<NhdMultiviewTileState> _pendingMviewTiles = new List<NhdMultiviewTileState>();
+        private eRoutingSignalType _pendingMatrixSignalType = eRoutingSignalType.AudioVideo;
 
         public NhdCtlSessionManager(NhdCtlPro ctl)
         {
             _ctl = ctl;
-            _gather = new CommunicationGather(ctl.Comms, "\r\n");
+            // Accept both LF and CRLF responses from the CTL CLI.
+            _gather = new CommunicationGather(ctl.Comms, "\n");
             _gather.LineReceived += HandleLineReceived;
+            _ctl.Comms.TextReceived += HandleRawTextReceived;
         }
+
+        public bool IsReadyForApiCommands => _isSessionReady;
 
         public void Start()
         {
-            // Preferred endpoint references are aliases, but some replies still return hostnames.
-            _startupProbeCompleted.Clear();
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Starting NHD session manager; enabling alias mode and requesting identity list", _ctl);
-            NhdApiCommandSender.TrySend(_ctl, "config set session alias on");
-            NhdApiCommandSender.TrySend(_ctl, "config get name");
-            NhdApiCommandSender.TrySend(_ctl, "config get devicelist");
-            NhdApiCommandSender.TrySend(_ctl, "mscene get");
-            NhdApiCommandSender.TrySend(_ctl, "mview get");
+            ArmBootstrap("startup");
+            SendSessionProbe("startup");
         }
 
         public bool TryRouteMultiviewTile(IKeyed requestedBy, NhdBaseDevice txEndpoint, NhdBaseDevice rxEndpoint, string layoutName, int tileReference)
@@ -481,9 +531,18 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (string.IsNullOrWhiteSpace(line))
                 return;
 
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] NHD API << {1}", _ctl, line);
+            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ NHD API << {Line}", _ctl, line);
+
+            if (TryHandleSessionLifecycleLine(line))
+                return;
 
             if (TryHandleMultiviewInformationBlock(line))
+                return;
+
+            if (TryHandleMatrixInformationBlock(line))
+                return;
+
+            if (TryHandleMatrixSetResponseLine(line))
                 return;
 
             if (TryHandleMsceneListBlock(line))
@@ -498,7 +557,544 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (TryHandleEndpointNotifyLine(line))
                 return;
 
+            if (TryHandleVideoNotifyLine(line))
+                return;
+
             TryHandleDeviceListLine(line);
+        }
+
+        private void HandleRawTextReceived(object sender, GenericCommMethodReceiveTextArgs args)
+        {
+            var chunk = args?.Text;
+            if (string.IsNullOrEmpty(chunk))
+                return;
+
+            TryHandleTelnetNegotiationBytes(chunk);
+            TryHandleSessionLifecycleChunk(chunk);
+        }
+
+        private void TryHandleSessionLifecycleChunk(string chunk)
+        {
+            if (string.IsNullOrWhiteSpace(chunk))
+                return;
+
+            if (chunk.IndexOf("*** IDLE TIMEOUT ***", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                ArmBootstrap("idle timeout");
+                return;
+            }
+
+            if (chunk.IndexOf("Unable to Login", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                HandleLoginFailure("login failed");
+                return;
+            }
+
+            if (TryHandleCredentialPrompts(chunk))
+            {
+                return;
+            }
+
+            if (!_isSessionReady && chunk.IndexOf("Welcome to NetworkHD", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                MarkSessionReady("welcome banner");
+            }
+        }
+
+        private void TryHandleTelnetNegotiationBytes(string chunk)
+        {
+            if (string.IsNullOrEmpty(chunk))
+                return;
+
+            var bytes = Encoding.GetEncoding(28591).GetBytes(chunk);
+            if (bytes.Length == 0)
+                return;
+
+            var response = new List<byte>();
+            for (var i = 0; i < bytes.Length; i++)
+            {
+                var value = bytes[i];
+
+                if (_telnetAwaitingOption)
+                {
+                    AppendTelnetNegotiationReply(_telnetPendingCommand, value, response);
+                    _telnetAwaitingOption = false;
+                    continue;
+                }
+
+                if (_telnetAwaitingCommand)
+                {
+                    if (value == TelnetWill || value == TelnetWont || value == TelnetDo || value == TelnetDont)
+                    {
+                        _telnetPendingCommand = value;
+                        _telnetAwaitingOption = true;
+                    }
+
+                    _telnetAwaitingCommand = false;
+                    continue;
+                }
+
+                if (value == TelnetIac)
+                {
+                    _telnetAwaitingCommand = true;
+                }
+            }
+
+            if (response.Count <= 0)
+                return;
+
+            _ctl.Comms.SendBytes(response.ToArray());
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ Sent Telnet negotiation reply bytes: {0}",
+                _ctl,
+                FormatByteSequence(response));
+        }
+
+        private static void AppendTelnetNegotiationReply(byte command, byte option, List<byte> response)
+        {
+            if (response == null)
+                return;
+
+            switch (command)
+            {
+                case TelnetWill:
+                    response.Add(TelnetIac);
+                    response.Add(SupportsRemoteWillOption(option) ? TelnetDo : TelnetDont);
+                    response.Add(option);
+                    break;
+
+                case TelnetWont:
+                    response.Add(TelnetIac);
+                    response.Add(TelnetDont);
+                    response.Add(option);
+                    break;
+
+                case TelnetDo:
+                    response.Add(TelnetIac);
+                    response.Add(SupportsLocalDoOption(option) ? TelnetWill : TelnetWont);
+                    response.Add(option);
+                    break;
+
+                case TelnetDont:
+                    response.Add(TelnetIac);
+                    response.Add(TelnetWont);
+                    response.Add(option);
+                    break;
+            }
+        }
+
+        private static string FormatByteSequence(IEnumerable<byte> bytes)
+        {
+            if (bytes == null)
+                return string.Empty;
+
+            return string.Join(" ", bytes.Select(value => value.ToString("X2", CultureInfo.InvariantCulture)));
+        }
+
+        private bool TryHandleSessionLifecycleLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                return false;
+
+            if (line.IndexOf("*** IDLE TIMEOUT ***", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                ArmBootstrap("idle timeout");
+                return true;
+            }
+
+            if (line.StartsWith("Unable to Login", StringComparison.OrdinalIgnoreCase))
+            {
+                HandleLoginFailure("login failed");
+                return true;
+            }
+
+            if (line.IndexOf("Welcome to NetworkHD", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                MarkSessionReady("welcome banner");
+                return true;
+            }
+
+            if (!_isSessionReady && IsLikelyApiResponseLine(line))
+            {
+                MarkSessionReady("api response");
+                return false;
+            }
+
+            if (TryHandleTelnetNegotiationLine(line) && !_isSessionReady)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryHandleCredentialPrompts(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            var sawUserPrompt = ContainsStandalonePrompt(text, "User:");
+            var sawPasswordPrompt = ContainsStandalonePrompt(text, "Password:");
+            if (!sawUserPrompt && !sawPasswordPrompt)
+                return false;
+
+            if (!_ctl.EnableTelnetLoginAutomation)
+            {
+                if (!_loginAutomationDisabledNoticeLogged)
+                {
+                    _loginAutomationDisabledNoticeLogged = true;
+                    Debug.LogMessage(
+                        Serilog.Events.LogEventLevel.Information,
+                        "$$$$$$$$$$ Telnet login automation disabled; ignoring credential prompts",
+                        _ctl);
+                }
+
+                return true;
+            }
+
+            var now = DateTime.UtcNow;
+            var username = _ctl.ApiUsername ?? string.Empty;
+            var password = _ctl.ApiPassword ?? string.Empty;
+
+            if (sawUserPrompt
+                && !IsDuplicatePrompt(ref _lastStandaloneUserPromptSeenUtc, now)
+                && (!_lastUserPromptHandledUtc.HasValue || now - _lastUserPromptHandledUtc.Value >= CredentialPromptThrottle))
+            {
+                _lastUserPromptHandledUtc = now;
+                ArmBootstrap("login prompt detected");
+                SendUsernameCredential(username);
+            }
+
+            if (sawPasswordPrompt
+                && !IsDuplicatePrompt(ref _lastStandalonePasswordPromptSeenUtc, now)
+                && (!_lastPasswordPromptHandledUtc.HasValue || now - _lastPasswordPromptHandledUtc.Value >= CredentialPromptThrottle))
+            {
+                _lastPasswordPromptHandledUtc = now;
+                ArmBootstrap("password prompt detected");
+                SendPasswordCredential(password);
+            }
+
+            return true;
+        }
+
+        private static bool IsDuplicatePrompt(ref DateTime? lastSeenUtc, DateTime now)
+        {
+            if (lastSeenUtc.HasValue && now - lastSeenUtc.Value < PromptDedupWindow)
+                return true;
+
+            lastSeenUtc = now;
+            return false;
+        }
+
+        private void SendUsernameCredential(string username)
+        {
+            _ctl.Comms.SendText((username ?? string.Empty) + "\r\n");
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ Login prompt 'User:' detected; sending configured username",
+                _ctl);
+        }
+
+        private void SendPasswordCredential(string password)
+        {
+            _ctl.Comms.SendText((password ?? string.Empty) + "\r\n");
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ Login prompt 'Password:' detected; sending configured password",
+                _ctl);
+        }
+
+        private void HandleLoginFailure(string reason)
+        {
+            var now = DateTime.UtcNow;
+            if (_lastLoginFailureHandledUtc.HasValue && now - _lastLoginFailureHandledUtc.Value < LoginFailureThrottle)
+                return;
+
+            _lastLoginFailureHandledUtc = now;
+            ArmBootstrap(reason);
+
+            if (_ctl.EnableTelnetLoginAutomation)
+            {
+                Debug.LogError(
+                    "[{0}] CTL login failed. Verify configured API username/password.",
+                    _ctl.Key);
+            }
+        }
+
+        private static bool ContainsStandalonePrompt(string text, string promptToken)
+        {
+            if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(promptToken))
+                return false;
+
+            var searchIndex = 0;
+            while (searchIndex < text.Length)
+            {
+                var index = text.IndexOf(promptToken, searchIndex, StringComparison.OrdinalIgnoreCase);
+                if (index < 0)
+                    return false;
+
+                var nextIndex = index + promptToken.Length;
+                if (nextIndex >= text.Length)
+                    return true;
+
+                var next = text[nextIndex];
+                if (next == '\r' || next == '\n' || char.IsWhiteSpace(next))
+                    return true;
+
+                searchIndex = nextIndex;
+            }
+
+            return false;
+        }
+
+        private bool HasRecentCredentialPrompt()
+        {
+            var now = DateTime.UtcNow;
+
+            if (_lastUserPromptHandledUtc.HasValue && now - _lastUserPromptHandledUtc.Value < SessionProbeThrottle)
+                return true;
+
+            if (_lastPasswordPromptHandledUtc.HasValue && now - _lastPasswordPromptHandledUtc.Value < SessionProbeThrottle)
+                return true;
+
+            return false;
+        }
+
+        private static bool IsLikelyApiResponseLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                return false;
+
+            if (TelnetNegotiationRegex.IsMatch(line))
+                return false;
+
+            if (line.StartsWith("User:", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("Password:", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("Unable to Login", StringComparison.OrdinalIgnoreCase)
+                || line.IndexOf("*** IDLE TIMEOUT ***", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return false;
+            }
+
+            return line.StartsWith("config ", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("notify ", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("matrix ", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("mview ", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("mscene ", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("+OK", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("-ERR", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool TryHandleTelnetNegotiationLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line) || !TelnetNegotiationRegex.IsMatch(line))
+                return false;
+
+            var tokens = ParseTelnetHexTokens(line);
+            if (tokens.Count < 3)
+                return true;
+
+            var response = new List<byte>();
+            for (var i = 0; i + 2 < tokens.Count; i += 3)
+            {
+                if (tokens[i] != TelnetIac)
+                    continue;
+
+                var command = tokens[i + 1];
+                var option = tokens[i + 2];
+
+                AppendTelnetNegotiationReply(command, option, response);
+            }
+
+            if (response.Count > 0)
+            {
+                _ctl.Comms.SendBytes(response.ToArray());
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ Sent Telnet negotiation reply bytes: {0}",
+                    _ctl,
+                    FormatByteSequence(response));
+            }
+
+            return true;
+        }
+
+        private static List<byte> ParseTelnetHexTokens(string line)
+        {
+            var values = new List<byte>();
+            if (string.IsNullOrWhiteSpace(line))
+                return values;
+
+            var matches = TelnetHexTokenRegex.Matches(line);
+            foreach (Match match in matches)
+            {
+                if (!match.Success)
+                    continue;
+
+                var hex = match.Groups["hex"].Value;
+                if (byte.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var value))
+                    values.Add(value);
+            }
+
+            return values;
+        }
+
+        private static bool SupportsRemoteWillOption(byte option)
+        {
+            return option == TelnetOptionEcho || option == TelnetOptionSuppressGoAhead;
+        }
+
+        private static bool SupportsLocalDoOption(byte option)
+        {
+            // This client only agrees to suppress-go-ahead locally.
+            return option == TelnetOptionSuppressGoAhead;
+        }
+
+        private void ArmBootstrap(string reason)
+        {
+            var wasReady = _isSessionReady;
+
+            _isSessionReady = false;
+            _bootstrapPending = true;
+            _isParsingMviewInformation = false;
+            _isParsingMatrixInformation = false;
+            _isParsingMsceneList = false;
+            _pendingMviewEndpoint = null;
+            _pendingMviewTiles.Clear();
+            _subscribedNotificationReferences.Clear();
+            _lastMatrixRefreshUtc = null;
+
+            if (wasReady)
+            {
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ Session marked not-ready; reason='{Reason}'",
+                    _ctl,
+                    reason ?? "unspecified");
+            }
+        }
+
+        private void MarkSessionReady(string reason)
+        {
+            var wasReady = _isSessionReady;
+            _isSessionReady = true;
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ Session ready; reason='{Reason}', bootstrapPending={BootstrapPending}",
+                _ctl,
+                reason ?? "unspecified",
+                _bootstrapPending);
+
+            if (_bootstrapPending)
+            {
+                _bootstrapPending = false;
+                RunBootstrapQueries();
+            }
+            else if (!wasReady)
+            {
+                RequestMatrixState(_ctl, force: true);
+            }
+        }
+
+        private void RunBootstrapQueries()
+        {
+            // Preferred endpoint references are aliases, but some replies still return hostnames.
+            _startupProbeCompleted.Clear();
+            _lastMsceneListRequestUtc.Clear();
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ Running CTL bootstrap queries",
+                _ctl);
+
+            NhdApiCommandSender.TrySend(_ctl, "config set session alias on");
+            NhdApiCommandSender.TrySend(_ctl, "config get name");
+            NhdApiCommandSender.TrySend(_ctl, "config get devicelist");
+            NhdApiCommandSender.TrySend(_ctl, "mscene get");
+            NhdApiCommandSender.TrySend(_ctl, "mview get");
+
+            foreach (var endpoint in GetEndpoints())
+            {
+                EnsureNotificationsSubscribed(endpoint.ConfiguredAlias, _ctl);
+            }
+
+            RequestMatrixState(_ctl, force: true);
+        }
+
+        private void EnsureConnected()
+        {
+            if (_ctl.Comms == null)
+                return;
+
+            if (_ctl.Comms.IsConnected)
+                return;
+
+            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ Connecting NHD-CTL session transport", _ctl);
+            _ctl.Comms.Connect();
+        }
+
+        private void SendSessionProbe(string reason)
+        {
+            if (_ctl.Comms == null)
+                return;
+
+            if (HasRecentCredentialPrompt())
+                return;
+
+            if (_lastSessionProbeUtc.HasValue && DateTime.UtcNow - _lastSessionProbeUtc.Value < SessionProbeThrottle)
+                return;
+
+            EnsureConnected();
+            if (!_ctl.Comms.IsConnected)
+                return;
+
+            _lastSessionProbeUtc = DateTime.UtcNow;
+
+            if (_ctl.Comms is GenericSshClient)
+            {
+                // SSH sessions can come up without a banner/prompt; send a safe command probe
+                // so first response can mark session ready and release bootstrap.
+                SendPreReadyApiCommand("config get name");
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Debug,
+                    "Sent session command probe; reason='{Reason}'",
+                    _ctl,
+                    reason ?? "unspecified");
+                return;
+            }
+
+            _ctl.Comms.SendText("\r\n");
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Debug,
+                "Sent session probe line; reason='{Reason}'",
+                _ctl,
+                reason ?? "unspecified");
+        }
+
+        private void SendPreReadyApiCommand(string command)
+        {
+            if (string.IsNullOrWhiteSpace(command) || _ctl.Comms == null)
+                return;
+
+            var normalized = command.Trim();
+            _ctl.Comms.SendText(normalized + "\r\n");
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ NHD API >> {Command}",
+                _ctl,
+                normalized);
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Debug,
+                "NHD API >> {Command}",
+                _ctl,
+                normalized);
         }
 
         private bool TryHandleMsceneActiveResponseLine(string line)
@@ -666,8 +1262,12 @@ namespace PepperDash.Essentials.Plugin.Comms
             endpoint.SetOnlineState(true);
             Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Alias mapping resolved endpoint='{1}', Hostname='{2}', Alias='{3}'", _ctl, endpoint.Key, hostname, alias ?? "null");
 
+            EnsureNotificationsSubscribed(hostname);
+            EnsureNotificationsSubscribed(alias);
+
             RequestMultiviewState(endpoint);
             RequestMultiviewPresetLayouts(endpoint);
+            RequestMatrixState();
             TryStartStartupProbeIfReady(endpoint);
 
             return true;
@@ -686,14 +1286,87 @@ namespace PepperDash.Essentials.Plugin.Comms
             endpoint?.SetOnlineState(isOnline);
             Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Notify endpoint reference='{1}', state='{2}', resolvedEndpoint='{3}'", _ctl, reference, isOnline ? "online" : "offline", endpoint?.Key ?? "unresolved");
 
+            EnsureNotificationsSubscribed(reference);
+
             if (isOnline && endpoint != null)
             {
                 RequestMultiviewState(endpoint);
                 RequestMultiviewPresetLayouts(endpoint);
+                RequestMatrixState();
                 TryStartStartupProbeIfReady(endpoint);
             }
 
             return true;
+        }
+
+        private bool TryHandleVideoNotifyLine(string line)
+        {
+            var match = VideoNotifyRegex.Match(line);
+            if (!match.Success)
+                return false;
+
+            var reference = match.Groups["reference"].Value.Trim();
+            var stateToken = !string.IsNullOrWhiteSpace(match.Groups["state1"].Value)
+                ? match.Groups["state1"].Value.Trim()
+                : match.Groups["state2"].Value.Trim();
+
+            EnsureNotificationsSubscribed(reference);
+
+            if (!TryParseVideoNotifyState(stateToken, out var syncDetected))
+            {
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{0}] Notify video state could not be parsed: reference='{1}', token='{2}'",
+                    _ctl,
+                    reference,
+                    stateToken);
+                return true;
+            }
+
+            var endpoint = ResolveEndpoint(reference);
+            endpoint?.SetInputSyncState(syncDetected);
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ [{0}] Notify video reference='{1}', sync='{2}', resolvedEndpoint='{3}'",
+                _ctl,
+                reference,
+                syncDetected ? "detected" : "lost",
+                endpoint?.Key ?? "unresolved");
+
+            return true;
+        }
+
+        private static bool TryParseVideoNotifyState(string token, out bool syncDetected)
+        {
+            syncDetected = false;
+            if (string.IsNullOrWhiteSpace(token))
+                return false;
+
+            var value = token.Trim();
+            if (value == "+"
+                || value.Equals("on", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("sync", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("present", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("online", StringComparison.OrdinalIgnoreCase)
+                || value == "1")
+            {
+                syncDetected = true;
+                return true;
+            }
+
+            if (value == "-"
+                || value.Equals("off", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("nosync", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("absent", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("offline", StringComparison.OrdinalIgnoreCase)
+                || value == "0")
+            {
+                syncDetected = false;
+                return true;
+            }
+
+            return false;
         }
 
         private bool TryHandleDeviceListLine(string line)
@@ -712,6 +1385,8 @@ namespace PepperDash.Essentials.Plugin.Comms
             var listedEndpoints = new HashSet<NhdBaseDevice>();
             foreach (var reference in refs)
             {
+                EnsureNotificationsSubscribed(reference);
+
                 var endpoint = ResolveEndpoint(reference);
                 if (endpoint == null)
                 {
@@ -724,6 +1399,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Devicelist marked endpoint online: '{1}' (ref='{2}')", _ctl, endpoint.Key, reference);
                 RequestMultiviewState(endpoint);
                 RequestMultiviewPresetLayouts(endpoint);
+                RequestMatrixState();
                 TryStartStartupProbeIfReady(endpoint);
             }
 
@@ -755,6 +1431,104 @@ namespace PepperDash.Essentials.Plugin.Comms
             }
 
             return false;
+        }
+
+        private bool TryHandleMatrixInformationBlock(string line)
+        {
+            if (_isParsingMatrixInformation)
+            {
+                if (TryConsumeMatrixInformationLine(line))
+                    return true;
+
+                _isParsingMatrixInformation = false;
+            }
+
+            var headerMatch = MatrixInformationHeaderRegex.Match(line);
+            if (!headerMatch.Success)
+                return false;
+
+            _pendingMatrixSignalType = GetMatrixSignalType(headerMatch.Groups["domain"].Value);
+            _isParsingMatrixInformation = true;
+            return true;
+        }
+
+        private bool TryConsumeMatrixInformationLine(string line)
+        {
+            var tokens = line.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length < 2)
+                return false;
+
+            var txReference = tokens[0].Trim();
+            var rxReference = tokens[1].Trim();
+
+            TryApplyMatrixRoute(txReference, rxReference, _pendingMatrixSignalType);
+            return true;
+        }
+
+        private bool TryHandleMatrixSetResponseLine(string line)
+        {
+            var match = MatrixSetResponseRegex.Match(line);
+            if (!match.Success)
+                return false;
+
+            if (!match.Groups["result"].Value.Equals("success", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            var txReference = match.Groups["tx"].Value.Trim();
+            var rxReference = match.Groups["rx"].Value.Trim();
+            var signalType = GetMatrixSignalType(match.Groups["domain"].Value);
+
+            TryApplyMatrixRoute(txReference, rxReference, signalType);
+            return true;
+        }
+
+        private void TryApplyMatrixRoute(string txReference, string rxReference, eRoutingSignalType signalType)
+        {
+            var rxEndpoint = ResolveEndpoint(rxReference);
+            if (rxEndpoint == null)
+                return;
+
+            var txEndpointKey = IsNullRouteReference(txReference)
+                ? null
+                : ResolveEndpoint(txReference)?.Key;
+
+            if (!string.IsNullOrWhiteSpace(txReference) && !IsNullRouteReference(txReference) && string.IsNullOrWhiteSpace(txEndpointKey))
+                return;
+
+            if (!NhdGlobalRouter.Instance.TrySetTrackedMatrixRoute(txEndpointKey, rxEndpoint.Key, signalType))
+                return;
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ [{0}] Applied tracked matrix route from CTL feedback: tx='{1}', rx='{2}', signal='{3}'",
+                _ctl,
+                txEndpointKey ?? "null",
+                rxEndpoint.Key,
+                signalType);
+        }
+
+        private static eRoutingSignalType GetMatrixSignalType(string domain)
+        {
+            if (string.IsNullOrWhiteSpace(domain))
+                return eRoutingSignalType.AudioVideo;
+
+            var normalized = domain.Trim();
+            if (normalized.Equals("video", StringComparison.OrdinalIgnoreCase))
+                return eRoutingSignalType.Video;
+
+            if (normalized.Equals("audio", StringComparison.OrdinalIgnoreCase))
+                return eRoutingSignalType.Audio;
+
+            if (normalized.Equals("usb", StringComparison.OrdinalIgnoreCase))
+                return NhdRoutingSignalTypes.UsbInput | NhdRoutingSignalTypes.UsbOutput | eRoutingSignalType.Usb;
+
+            if (normalized.Equals("serial", StringComparison.OrdinalIgnoreCase))
+                return NhdRoutingSignalTypes.Serial;
+
+            if (normalized.Equals("infrared", StringComparison.OrdinalIgnoreCase))
+                return NhdRoutingSignalTypes.Ir;
+
+            return eRoutingSignalType.AudioVideo;
         }
 
         private bool TryHandleMsceneListBlock(string line)
@@ -988,8 +1762,60 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return;
 
             var sender = source ?? _ctl;
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Requesting multiview state for endpoint '{1}'", sender, endpoint.Key);
+            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ Requesting multiview state for endpoint '{EndpointKey}'", sender, endpoint.Key);
             NhdApiCommandSender.TrySend(sender, $"mview get {endpoint.ApiEndpointReference}");
+        }
+
+        private void RequestMatrixState(IKeyed source = null, bool force = false)
+        {
+            if (!force && _lastMatrixRefreshUtc.HasValue && DateTime.UtcNow - _lastMatrixRefreshUtc.Value < MatrixRefreshThrottle)
+                return;
+
+            _lastMatrixRefreshUtc = DateTime.UtcNow;
+
+            var sender = source ?? _ctl;
+
+            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ Requesting matrix route state", sender);
+
+            NhdApiCommandSender.TrySend(sender, "matrix get");
+            NhdApiCommandSender.TrySend(sender, "matrix video get");
+            NhdApiCommandSender.TrySend(sender, "matrix audio get");
+            NhdApiCommandSender.TrySend(sender, "matrix usb get");
+            NhdApiCommandSender.TrySend(sender, "matrix serial get");
+            NhdApiCommandSender.TrySend(sender, "matrix infrared get");
+        }
+
+        private void EnsureNotificationsSubscribed(string endpointReference, IKeyed source = null)
+        {
+            if (string.IsNullOrWhiteSpace(endpointReference))
+                return;
+
+            var reference = endpointReference.Trim();
+            if (_subscribedNotificationReferences.Contains(reference))
+                return;
+
+            var sender = source ?? _ctl;
+            var endpointSubscribed = NhdApiCommandSender.TrySend(sender, $"notify endpoint {reference}");
+            var videoSubscribed = NhdApiCommandSender.TrySend(sender, $"notify video {reference}");
+
+            if (!endpointSubscribed || !videoSubscribed)
+            {
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ Failed to subscribe notifications for endpoint reference '{EndpointRef}' (endpoint={EndpointResult}, video={VideoResult})",
+                    sender,
+                    reference,
+                    endpointSubscribed ? "ok" : "failed",
+                    videoSubscribed ? "ok" : "failed");
+                return;
+            }
+
+            _subscribedNotificationReferences.Add(reference);
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ Subscribed notifications for endpoint reference '{EndpointRef}'",
+                sender,
+                reference);
         }
 
         private bool TrySendNextProbeLayout(NhdBaseDevice endpoint)
@@ -1265,6 +2091,19 @@ namespace PepperDash.Essentials.Plugin.Comms
                 string.Equals(d.ConfiguredAlias, value, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(d.Hostname, value, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(d.Key, value, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsNullRouteReference(string reference)
+        {
+            if (string.IsNullOrWhiteSpace(reference))
+                return true;
+
+            var value = reference.Trim();
+
+            return value.Equals("null", StringComparison.OrdinalIgnoreCase)
+                || value.Equals(NhdGlobalRouter.RouteOff, StringComparison.OrdinalIgnoreCase)
+                || value.Equals("off", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("none", StringComparison.OrdinalIgnoreCase);
         }
     }
 }
