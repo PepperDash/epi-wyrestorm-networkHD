@@ -1,3 +1,4 @@
+using Newtonsoft.Json.Linq;
 using PepperDash.Core;
 using PepperDash.Essentials.Core;
 using PepperDash.Essentials.Core.Config;
@@ -17,11 +18,33 @@ namespace PepperDash.Essentials.Plugin
 
         protected static NhdDeviceProperties GetProperties(DeviceConfig dc)
         {
-            var props = dc.Properties.ToObject<NhdDeviceProperties>();
+            if (dc == null)
+            {
+                Debug.LogError("Factory: null device config");
+                return null;
+            }
+
+            if (dc.Properties == null)
+            {
+                Debug.LogError("[{key}] Factory: missing properties config for {name}", dc.Key, dc.Name);
+                return new NhdDeviceProperties();
+            }
+
+            NhdDeviceProperties props;
+            try
+            {
+                props = dc.Properties.ToObject<NhdDeviceProperties>();
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError("[{key}] Factory: exception reading properties config for {name}: {message}", dc.Key, dc.Name, ex.Message);
+                props = new NhdDeviceProperties();
+            }
+
             if (props == null)
             {
                 Debug.LogError("[{key}] Factory: failed to read properties config for {name}", dc.Key, dc.Name);
-                return null;
+                props = new NhdDeviceProperties();
             }
 
             HydrateApiCredentialsFromControlConfig(dc, props);
@@ -31,6 +54,13 @@ namespace PepperDash.Essentials.Plugin
         private static void HydrateApiCredentialsFromControlConfig(DeviceConfig dc, NhdDeviceProperties props)
         {
             if (props == null || dc == null)
+                return;
+
+            if (dc.Properties == null || dc.Properties.Type != JTokenType.Object)
+                return;
+
+            var propertiesObject = dc.Properties as JObject;
+            if (propertiesObject == null || propertiesObject["control"] == null || propertiesObject["control"].Type == JTokenType.Null)
                 return;
 
             var controlConfig = CommFactory.GetControlPropertiesConfig(dc);

@@ -30,7 +30,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex TileDescriptorRegex = new Regex(
-            "^(?<source>[^:\\s]+):(?<x>\\d+)_(?<y>\\d+)_(?<w>\\d+)_(?<h>\\d+):(?<scale>fit|stretch)$",
+            "^(?<source>[^:\\s]+):(?<x>\\d+)_(?<y>\\d+)_(?<w>\\d+)_(?<h>\\d+):(?<scale>fit|stretch)(?::\\d+)?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex MsceneActiveResponseRegex = new Regex(
@@ -1014,8 +1014,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             NhdApiCommandSender.TrySend(_ctl, "config set session alias on");
             NhdApiCommandSender.TrySend(_ctl, "config get name");
             NhdApiCommandSender.TrySend(_ctl, "config get devicelist");
-            NhdApiCommandSender.TrySend(_ctl, "mscene get");
-            NhdApiCommandSender.TrySend(_ctl, "mview get");
 
             foreach (var endpoint in GetEndpoints())
             {
@@ -1455,7 +1453,10 @@ namespace PepperDash.Essentials.Plugin.Comms
         private bool TryConsumeMatrixInformationLine(string line)
         {
             var tokens = line.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            if (tokens.Length < 2)
+            // Matrix information entries are strict "<txRef> <rxRef>" pairs.
+            // Requiring exactly two tokens prevents this parser from swallowing
+            // unrelated lines while a matrix block is open.
+            if (tokens.Length != 2)
                 return false;
 
             var txReference = tokens[0].Trim();
@@ -1556,6 +1557,10 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (tokens.Length < 2)
                 return false;
 
+            // Stop list parsing when a command/response line starts (for example: "mscene active ...").
+            if (tokens[0].Equals("mscene", StringComparison.OrdinalIgnoreCase))
+                return false;
+
             var layoutTokens = tokens.Skip(1).ToList();
             if (!layoutTokens.Any(t => t.Contains("-")))
                 return false;
@@ -1563,6 +1568,9 @@ namespace PepperDash.Essentials.Plugin.Comms
             var endpoint = ResolveEndpoint(tokens[0]);
             if (endpoint == null || !endpoint.SupportsMultiview)
                 return true;
+
+            // If the CTL is returning a preset list for this endpoint, it is online for API purposes.
+            endpoint.SetOnlineState(true);
 
             var layouts = layoutTokens
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -1600,13 +1608,47 @@ namespace PepperDash.Essentials.Plugin.Comms
                 _pendingMviewMode = mode;
                 _pendingMviewTiles.Clear();
                 AppendTileDescriptors(match.Groups["tiles"].Value);
+
+                // Endpoint-scoped "mview get <rx>" responses are typically a single entry.
+                // Finalize as soon as enough tile descriptors are parsed for the active probe layout.
+                if (ShouldFinalizePendingMviewEntry())
+                {
+                    FinalizePendingMviewInformationEntry();
+                    _isParsingMviewInformation = false;
+                }
+
                 return true;
             }
 
             if (_pendingMviewEndpoint != null && AppendTileDescriptors(line))
+            {
+                if (ShouldFinalizePendingMviewEntry())
+                {
+                    FinalizePendingMviewInformationEntry();
+                    _isParsingMviewInformation = false;
+                }
+
                 return true;
+            }
 
             return false;
+        }
+
+        private bool ShouldFinalizePendingMviewEntry()
+        {
+            if (_pendingMviewEndpoint == null)
+                return false;
+
+            if (_pendingMviewTiles.Count == 0)
+                return false;
+
+            if (_pendingLayoutGeometryCapture.TryGetValue(_pendingMviewEndpoint.Key, out var recalledLayout)
+                && NhdBaseDevice.TryInferPresetLayoutShape(recalledLayout, out var expectedTileCount, out _))
+            {
+                return _pendingMviewTiles.Count >= expectedTileCount;
+            }
+
+            return true;
         }
 
         private static bool TryParseMode(string modeText, out NhdMultiStreamMode mode)
@@ -1777,7 +1819,6 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ Requesting matrix route state", sender);
 
-            NhdApiCommandSender.TrySend(sender, "matrix get");
             NhdApiCommandSender.TrySend(sender, "matrix video get");
             NhdApiCommandSender.TrySend(sender, "matrix audio get");
             NhdApiCommandSender.TrySend(sender, "matrix usb get");
@@ -1796,24 +1837,22 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             var sender = source ?? _ctl;
             var endpointSubscribed = NhdApiCommandSender.TrySend(sender, $"notify endpoint {reference}");
-            var videoSubscribed = NhdApiCommandSender.TrySend(sender, $"notify video {reference}");
 
-            if (!endpointSubscribed || !videoSubscribed)
+            if (!endpointSubscribed)
             {
                 Debug.LogMessage(
                     Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ Failed to subscribe notifications for endpoint reference '{EndpointRef}' (endpoint={EndpointResult}, video={VideoResult})",
+                    "$$$$$$$$$$ Failed to subscribe endpoint notifications for endpoint reference '{EndpointRef}' (endpoint={EndpointResult})",
                     sender,
                     reference,
-                    endpointSubscribed ? "ok" : "failed",
-                    videoSubscribed ? "ok" : "failed");
+                    endpointSubscribed ? "ok" : "failed");
                 return;
             }
 
             _subscribedNotificationReferences.Add(reference);
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ Subscribed notifications for endpoint reference '{EndpointRef}'",
+                "$$$$$$$$$$ Queued notification subscriptions for endpoint reference '{EndpointRef}'",
                 sender,
                 reference);
         }
@@ -2090,6 +2129,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             return GetEndpoints().FirstOrDefault(d =>
                 string.Equals(d.ConfiguredAlias, value, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(d.Hostname, value, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(d.ApiEndpointReference, value, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(d.Key, value, StringComparison.OrdinalIgnoreCase));
         }
 

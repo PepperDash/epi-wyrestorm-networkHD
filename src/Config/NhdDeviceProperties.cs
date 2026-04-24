@@ -10,7 +10,17 @@ namespace PepperDash.Essentials.Plugin
     {
         public static NhdDeviceProperties FromDeviceConfig(DeviceConfig config)
         {
-            return config.Properties.ToObject<NhdDeviceProperties>();
+            if (config == null || config.Properties == null)
+                return new NhdDeviceProperties();
+
+            try
+            {
+                return config.Properties.ToObject<NhdDeviceProperties>() ?? new NhdDeviceProperties();
+            }
+            catch
+            {
+                return new NhdDeviceProperties();
+            }
         }
 
         public int DeviceId { get; set; }
