@@ -5,5 +5,6 @@ namespace PepperDash.Essentials.Plugin.Enums
         Unknown = 0,
         Window = 1,
         Separate = 2,
+        NoChange = 3,
     }
 }

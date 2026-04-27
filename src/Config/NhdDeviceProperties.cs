@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using PepperDash.Essentials.Core.Config;
@@ -35,5 +36,7 @@ namespace PepperDash.Essentials.Plugin
         public NhdComPortRoutingMode? IrRoutingMode { get; set; }
         [JsonConverter(typeof(StringEnumConverter))]
         public NhdComPortRoutingMode? Rs232RoutingMode { get; set; }
+        public List<NhdCustomMultiviewLayoutProperties> CustomMultiviewLayouts { get; set; } = new List<NhdCustomMultiviewLayoutProperties>();
+        public List<NhdMultiviewPresetProperties> MultiviewPresets { get; set; } = new List<NhdMultiviewPresetProperties>();
     }
 }

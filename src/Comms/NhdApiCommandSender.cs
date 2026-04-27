@@ -165,7 +165,7 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             if (!_boundCtl.Comms.IsConnected)
             {
-                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Connecting NHD-CTL comms", _boundCtl);
+                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Connecting NHD-CTL comms", _boundCtl, _boundCtl.Key);
                 _boundCtl.Comms.Connect();
             }
 
@@ -244,6 +244,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             if (normalizedCommand == "config get name")
                 return normalizedLine.Contains(" alias is ");
+
+            if (normalizedCommand == "config get device status")
+                return normalizedLine.StartsWith("devices status info:", StringComparison.Ordinal);
 
             if (normalizedCommand == "matrix get")
                 return normalizedLine.StartsWith("matrix information:", StringComparison.Ordinal);

@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using PepperDash.Core;
 using PepperDash.Essentials.Core;
 using PepperDash.Essentials.Plugin.Comms;
+using PepperDash.Essentials.Plugin.Config;
 using PepperDash.Essentials.Plugin.Enums;
 using PepperDash.Essentials.Plugin.Routing;
 
@@ -33,6 +35,9 @@ namespace PepperDash.Essentials.Plugin
 		private int? _activeMultiviewAudioWindow;
 		private string _activeMultiviewAudioSeparateSourceReference;
 		private string _activeMultiviewAudioSourceReference;
+		private string _hdmiOutResolution;
+		private int? _hdmiOutResolutionWidth;
+		private int? _hdmiOutResolutionHeight;
 
 		private sealed class PresetMultiviewAudioSetting
 		{
@@ -65,10 +70,18 @@ namespace PepperDash.Essentials.Plugin
 		public string ActivePresetMultiviewLayoutName { get; private set; }
 		public bool ActivePresetMultiviewLayoutInferred { get; private set; }
 		public DateTime? ActivePresetMultiviewLayoutLastUpdateUtc { get; private set; }
+		public string ActiveCustomMultiviewLayoutKey { get; private set; }
+		public bool ActiveCustomMultiviewLayoutInferred { get; private set; }
+		public DateTime? ActiveCustomMultiviewLayoutLastUpdateUtc { get; private set; }
 		public NhdMultiviewAudioMode ActiveMultiviewAudioMode => _activeMultiviewAudioMode;
 		public int? ActiveMultiviewAudioWindow => _activeMultiviewAudioWindow;
 		public string ActiveMultiviewAudioSeparateSourceReference => _activeMultiviewAudioSeparateSourceReference;
 		public string ActiveMultiviewAudioSourceReference => _activeMultiviewAudioSourceReference;
+		public IReadOnlyList<NhdCustomMultiviewLayoutProperties> CustomMultiviewLayouts => Config.CustomMultiviewLayouts ?? (IReadOnlyList<NhdCustomMultiviewLayoutProperties>)Array.Empty<NhdCustomMultiviewLayoutProperties>();
+		public IReadOnlyList<NhdMultiviewPresetProperties> MultiviewPresets => Config.MultiviewPresets ?? (IReadOnlyList<NhdMultiviewPresetProperties>)Array.Empty<NhdMultiviewPresetProperties>();
+		public string HdmiOutResolution => _hdmiOutResolution;
+		public int? HdmiOutResolutionWidth => _hdmiOutResolutionWidth;
+		public int? HdmiOutResolutionHeight => _hdmiOutResolutionHeight;
 		public IReadOnlyDictionary<int, NhdMultiviewTileState> ActiveMultiviewTiles => _activeMultiviewTiles;
 		public IReadOnlyCollection<string> AvailablePresetMultiviewLayouts => _availablePresetMultiviewLayouts;
 		public IReadOnlyDictionary<string, string> LearnedPresetLayoutGeometrySignatures => _presetLayoutGeometrySignatures;
@@ -121,7 +134,7 @@ namespace PepperDash.Essentials.Plugin
 				return;
 
 			Hostname = value;
-			Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Hostname resolved to '{1}' (alias='{2}')", this, Hostname, ConfiguredAlias ?? "null");
+			Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{DeviceKey}] Hostname resolved to '{1}' (alias='{2}')", this, Key, Hostname, ConfiguredAlias ?? "null");
 		}
 
 		public void SetOnlineState(bool isOnline)
@@ -136,6 +149,12 @@ namespace PepperDash.Essentials.Plugin
 				MultiviewStateLastRefreshUtc = null;
 				_activeMultiviewGeometrySignature = null;
 				_activeMultiviewTiles.Clear();
+				ActivePresetMultiviewLayoutName = null;
+				ActivePresetMultiviewLayoutInferred = false;
+				ActivePresetMultiviewLayoutLastUpdateUtc = null;
+				ActiveCustomMultiviewLayoutKey = null;
+				ActiveCustomMultiviewLayoutInferred = false;
+				ActiveCustomMultiviewLayoutLastUpdateUtc = null;
 				_activeMultiviewAudioMode = NhdMultiviewAudioMode.Unknown;
 				_activeMultiviewAudioWindow = null;
 				_activeMultiviewAudioSeparateSourceReference = null;
@@ -147,7 +166,7 @@ namespace PepperDash.Essentials.Plugin
 				SetInputSyncState(false);
 			}
 
-			Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Online state -> {1} (endpointRef='{2}')", this, isOnline ? "ONLINE" : "OFFLINE", ApiEndpointReference);
+			Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{DeviceKey}] Online state -> {1} (endpointRef='{2}')", this, Key, isOnline ? "ONLINE" : "OFFLINE", ApiEndpointReference);
 			IsOnline.FireUpdate();
 			OnlineStateChanged?.Invoke(this, new NhdDeviceBoolStateChangedEventArgs(isOnline));
 		}
@@ -161,13 +180,145 @@ namespace PepperDash.Essentials.Plugin
 
 			Debug.LogMessage(
 				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{0}] Input sync -> {1} (endpointRef='{2}')",
+				"$$$$$$$$$$ [{DeviceKey}] Input sync -> {1} (endpointRef='{2}')",
 				this,
+				Key,
 				hasSync ? "DETECTED" : "LOST",
 				ApiEndpointReference);
 
 			InputSyncDetected.FireUpdate();
 			InputSyncStateChanged?.Invoke(this, new NhdDeviceBoolStateChangedEventArgs(hasSync));
+		}
+
+		public bool TryGetHdmiOutResolutionDimensions(out int width, out int height)
+		{
+			width = 0;
+			height = 0;
+
+			if (!_hdmiOutResolutionWidth.HasValue || !_hdmiOutResolutionHeight.HasValue)
+				return false;
+
+			width = _hdmiOutResolutionWidth.Value;
+			height = _hdmiOutResolutionHeight.Value;
+			return true;
+		}
+
+		public void SetHdmiOutResolution(string resolution)
+		{
+			var normalized = string.IsNullOrWhiteSpace(resolution) ? null : resolution.Trim();
+
+			int? parsedWidth = null;
+			int? parsedHeight = null;
+
+			if (!string.IsNullOrWhiteSpace(normalized))
+			{
+				var tokens = normalized.ToLowerInvariant().Split('x');
+				if (tokens.Length == 2
+					&& int.TryParse(tokens[0].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var width)
+					&& int.TryParse(tokens[1].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var height)
+					&& width > 0
+					&& height > 0)
+				{
+					parsedWidth = width;
+					parsedHeight = height;
+					normalized = string.Format(CultureInfo.InvariantCulture, "{0}x{1}", width, height);
+				}
+			}
+
+			if (string.Equals(_hdmiOutResolution, normalized, StringComparison.OrdinalIgnoreCase)
+				&& _hdmiOutResolutionWidth == parsedWidth
+				&& _hdmiOutResolutionHeight == parsedHeight)
+			{
+				return;
+			}
+
+			_hdmiOutResolution = normalized;
+			_hdmiOutResolutionWidth = parsedWidth;
+			_hdmiOutResolutionHeight = parsedHeight;
+
+			Debug.LogMessage(
+				Serilog.Events.LogEventLevel.Information,
+				"$$$$$$$$$$ [{DeviceKey}] HDMI out resolution -> '{1}' (endpointRef='{2}')",
+				this,
+				Key,
+				_hdmiOutResolution ?? "unknown",
+				ApiEndpointReference);
+		}
+
+		public bool TryGetCustomMultiviewLayout(string layoutKey, out NhdCustomMultiviewLayoutProperties layout)
+		{
+			layout = null;
+
+			if (string.IsNullOrWhiteSpace(layoutKey))
+				return false;
+
+			var normalizedKey = layoutKey.Trim();
+			var layouts = Config.CustomMultiviewLayouts;
+			if (layouts != null && layouts.Count > 0)
+			{
+				layout = layouts.FirstOrDefault(l =>
+					l != null
+					&& !string.IsNullOrWhiteSpace(l.Key)
+					&& string.Equals(l.Key.Trim(), normalizedKey, StringComparison.OrdinalIgnoreCase));
+
+				if (layout != null)
+					return true;
+			}
+
+			var sharedLayouts = GetControllerCustomMultiviewLayouts();
+			layout = sharedLayouts.FirstOrDefault(l =>
+				l != null
+				&& !string.IsNullOrWhiteSpace(l.Key)
+				&& string.Equals(l.Key.Trim(), normalizedKey, StringComparison.OrdinalIgnoreCase));
+
+			return layout != null;
+		}
+
+		public bool TryGetMultiviewPreset(string presetKey, out NhdMultiviewPresetProperties preset)
+		{
+			preset = null;
+
+			if (string.IsNullOrWhiteSpace(presetKey))
+				return false;
+
+			var normalizedKey = presetKey.Trim();
+			var presets = Config.MultiviewPresets;
+			if (presets != null && presets.Count > 0)
+			{
+				preset = presets.FirstOrDefault(p =>
+					p != null
+					&& !string.IsNullOrWhiteSpace(p.Key)
+					&& string.Equals(p.Key.Trim(), normalizedKey, StringComparison.OrdinalIgnoreCase));
+
+				if (preset != null)
+					return true;
+			}
+
+			var sharedPresets = GetControllerMultiviewPresets();
+			preset = sharedPresets.FirstOrDefault(p =>
+				p != null
+				&& !string.IsNullOrWhiteSpace(p.Key)
+				&& string.Equals(p.Key.Trim(), normalizedKey, StringComparison.OrdinalIgnoreCase));
+
+			return preset != null;
+		}
+
+		private static IReadOnlyList<NhdCustomMultiviewLayoutProperties> GetControllerCustomMultiviewLayouts()
+		{
+			var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
+			if (ctl?.Config?.CustomMultiviewLayouts == null)
+				return Array.Empty<NhdCustomMultiviewLayoutProperties>();
+
+			return ctl.Config.CustomMultiviewLayouts;
+		}
+
+		private static IReadOnlyList<NhdMultiviewPresetProperties> GetControllerMultiviewPresets()
+		{
+			var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
+			if (ctl?.Config?.MultiviewPresets == null)
+				return Array.Empty<NhdMultiviewPresetProperties>();
+
+			return ctl.Config.MultiviewPresets;
 		}
 
 		public bool IsMultiviewStateFresh(TimeSpan maxAge)
@@ -223,8 +374,9 @@ namespace PepperDash.Essentials.Plugin
 			{
 				Debug.LogMessage(
 					Serilog.Events.LogEventLevel.Information,
-					"$$$$$$$$$$ [{0}] Multiview state updated: mode='{1}', activeTiles={2}, maxTiles={3}",
+					"$$$$$$$$$$ [{DeviceKey}] Multiview state updated: mode='{Mode}', activeTiles={ActiveTiles}, maxTiles={MaxTiles}",
 					this,
+					Key,
 					mode,
 					normalizedTileCount,
 					MaxStreamCount);
@@ -263,8 +415,9 @@ namespace PepperDash.Essentials.Plugin
 
 			Debug.LogMessage(
 				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{0}] Saved preset audio setting layout='{1}', mode='window', target='{2}'",
+				"$$$$$$$$$$ [{DeviceKey}] Saved preset audio setting layout='{1}', mode='window', target='{2}'",
 				this,
+				Key,
 				normalizedLayout,
 				normalizedWindow.HasValue ? normalizedWindow.Value.ToString() : "null");
 		}
@@ -286,8 +439,9 @@ namespace PepperDash.Essentials.Plugin
 
 			Debug.LogMessage(
 				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{0}] Saved preset audio setting layout='{1}', mode='separate', target='{2}'",
+				"$$$$$$$$$$ [{DeviceKey}] Saved preset audio setting layout='{1}', mode='separate', target='{2}'",
 				this,
+				Key,
 				normalizedLayout,
 				normalizedSource ?? "null");
 		}
@@ -329,8 +483,9 @@ namespace PepperDash.Essentials.Plugin
 
 			Debug.LogMessage(
 				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{0}] Active multiview audio setting mode='{1}', window='{2}', separateSource='{3}'",
+				"$$$$$$$$$$ [{DeviceKey}] Active multiview audio setting mode='{1}', window='{2}', separateSource='{3}'",
 				this,
+				Key,
 				_activeMultiviewAudioMode,
 				_activeMultiviewAudioWindow.HasValue ? _activeMultiviewAudioWindow.Value.ToString() : "null",
 				_activeMultiviewAudioSeparateSourceReference ?? "null");
@@ -373,8 +528,9 @@ namespace PepperDash.Essentials.Plugin
 
 			Debug.LogMessage(
 				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{0}] Active multiview audio source set to '{1}' (mode='{2}', window='{3}', separateSource='{4}')",
+				"$$$$$$$$$$ [{DeviceKey}] Active multiview audio source set to '{1}' (mode='{2}', window='{3}', separateSource='{4}')",
 				this,
+				Key,
 				_activeMultiviewAudioSourceReference ?? "null",
 				_activeMultiviewAudioMode,
 				_activeMultiviewAudioWindow.HasValue ? _activeMultiviewAudioWindow.Value.ToString() : "null",
@@ -409,8 +565,9 @@ namespace PepperDash.Essentials.Plugin
 
 			Debug.LogMessage(
 				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{0}] Available multiview preset layouts updated: count={1}",
+				"$$$$$$$$$$ [{DeviceKey}] Available multiview preset layouts updated: count={1}",
 				this,
+				Key,
 				_availablePresetMultiviewLayouts.Count);
 		}
 
@@ -438,8 +595,9 @@ namespace PepperDash.Essentials.Plugin
 
 			Debug.LogMessage(
 				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{0}] Captured geometry signature for layout '{1}'",
+				"$$$$$$$$$$ [{DeviceKey}] Captured geometry signature for layout '{1}'",
 				this,
+				Key,
 				normalized);
 
 			return true;
@@ -454,8 +612,9 @@ namespace PepperDash.Essentials.Plugin
 
 			Debug.LogMessage(
 				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{0}] Cleared learned multiview preset layout geometry signatures",
-				this);
+				"$$$$$$$$$$ [{DeviceKey}] Cleared learned multiview preset layout geometry signatures",
+				this,
+				Key);
 		}
 
 		public bool TryIdentifyPresetLayoutByActiveGeometry(out string layoutName)
@@ -496,6 +655,44 @@ namespace PepperDash.Essentials.Plugin
 			}
 
 			return false;
+		}
+
+		public bool TryIdentifyCustomLayoutByActiveGeometry(out string layoutKey)
+		{
+			layoutKey = null;
+
+			if (!SupportsMultiview)
+				return false;
+
+			if (string.IsNullOrWhiteSpace(_activeMultiviewGeometrySignature))
+				return false;
+
+			var outputWidth = default(int);
+			var outputHeight = default(int);
+			var hasOutputDimensions = TryGetHdmiOutResolutionDimensions(out outputWidth, out outputHeight);
+
+			var matches = GetAllCustomMultiviewLayoutsByPrecedence()
+				.Where(layout => layout != null
+					&& !string.IsNullOrWhiteSpace(layout.Key)
+					&& layout.Mode == MultiStreamMode)
+				.Where(layout =>
+				{
+					var signature = BuildCustomLayoutGeometrySignature(
+						layout,
+						hasOutputDimensions ? outputWidth : 0,
+						hasOutputDimensions ? outputHeight : 0);
+					return !string.IsNullOrWhiteSpace(signature)
+						&& string.Equals(signature, _activeMultiviewGeometrySignature, StringComparison.Ordinal);
+				})
+				.Select(layout => layout.Key.Trim())
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
+
+			if (matches.Count != 1)
+				return false;
+
+			layoutKey = matches[0];
+			return true;
 		}
 
 		public static bool TryInferPresetLayoutShape(string layoutName, out int tileCount, out NhdMultiStreamMode mode)
@@ -541,10 +738,142 @@ namespace PepperDash.Essentials.Plugin
 			ActivePresetMultiviewLayoutLastUpdateUtc = DateTime.UtcNow;
 			Debug.LogMessage(
 				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{0}] Active multiview preset layout set to '{1}' (inferred={2})",
+				"$$$$$$$$$$ [{DeviceKey}] Active multiview preset layout set to '{Layout}' (inferred={Inferred})",
 				this,
+				Key,
 				ActivePresetMultiviewLayoutName ?? "null",
 				ActivePresetMultiviewLayoutInferred);
+		}
+
+		public void SetActiveCustomMultiviewLayout(string layoutKey, bool inferred = false)
+		{
+			if (!SupportsMultiview)
+				return;
+
+			var normalized = string.IsNullOrWhiteSpace(layoutKey) ? null : layoutKey.Trim();
+			if (string.Equals(ActiveCustomMultiviewLayoutKey, normalized, StringComparison.OrdinalIgnoreCase)
+				&& ActiveCustomMultiviewLayoutInferred == inferred)
+			{
+				return;
+			}
+
+			ActiveCustomMultiviewLayoutKey = normalized;
+			ActiveCustomMultiviewLayoutInferred = inferred;
+			ActiveCustomMultiviewLayoutLastUpdateUtc = DateTime.UtcNow;
+
+			Debug.LogMessage(
+				Serilog.Events.LogEventLevel.Information,
+				"$$$$$$$$$$ [{DeviceKey}] Active multiview custom layout set to '{LayoutKey}' (inferred={Inferred})",
+				this,
+				Key,
+				ActiveCustomMultiviewLayoutKey ?? "null",
+				ActiveCustomMultiviewLayoutInferred);
+		}
+
+		private IEnumerable<NhdCustomMultiviewLayoutProperties> GetAllCustomMultiviewLayoutsByPrecedence()
+		{
+			var yieldedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+			foreach (var localLayout in Config.CustomMultiviewLayouts ?? new List<NhdCustomMultiviewLayoutProperties>())
+			{
+				if (localLayout == null || string.IsNullOrWhiteSpace(localLayout.Key))
+					continue;
+
+				var normalizedKey = localLayout.Key.Trim();
+				if (!yieldedKeys.Add(normalizedKey))
+					continue;
+
+				yield return localLayout;
+			}
+
+			foreach (var sharedLayout in GetControllerCustomMultiviewLayouts())
+			{
+				if (sharedLayout == null || string.IsNullOrWhiteSpace(sharedLayout.Key))
+					continue;
+
+				var normalizedKey = sharedLayout.Key.Trim();
+				if (!yieldedKeys.Add(normalizedKey))
+					continue;
+
+				yield return sharedLayout;
+			}
+		}
+
+		private static string BuildCustomLayoutGeometrySignature(NhdCustomMultiviewLayoutProperties layout, int outputWidth, int outputHeight)
+		{
+			if (layout == null)
+				return null;
+
+			var windows = (layout.Windows ?? new List<NhdCustomMultiviewWindowProperties>())
+				.Where(window => window != null && window.WindowReference > 0)
+				.OrderBy(window => window.WindowReference)
+				.ToList();
+
+			if (windows.Count == 0)
+				return null;
+
+			var canvasWidth = layout.CanvasWidth > 0 ? layout.CanvasWidth : 1920;
+			var canvasHeight = layout.CanvasHeight > 0 ? layout.CanvasHeight : 1080;
+
+			if (outputWidth <= 0)
+				outputWidth = canvasWidth;
+
+			if (outputHeight <= 0)
+				outputHeight = canvasHeight;
+
+			var geometryTiles = new List<NhdMultiviewTileState>();
+			var tileNumber = 1;
+			foreach (var window in windows)
+			{
+				if (window.Width <= 0 || window.Height <= 0)
+					return null;
+
+				var scaledX = ScaleCoordinate(window.X, canvasWidth, outputWidth);
+				var scaledY = ScaleCoordinate(window.Y, canvasHeight, outputHeight);
+				var scaledWidth = ScaleLength(window.Width, canvasWidth, outputWidth);
+				var scaledHeight = ScaleLength(window.Height, canvasHeight, outputHeight);
+
+				if (scaledX >= outputWidth)
+					scaledX = Math.Max(0, outputWidth - 1);
+
+				if (scaledY >= outputHeight)
+					scaledY = Math.Max(0, outputHeight - 1);
+
+				if (scaledX + scaledWidth > outputWidth)
+					scaledWidth = Math.Max(1, outputWidth - scaledX);
+
+				if (scaledY + scaledHeight > outputHeight)
+					scaledHeight = Math.Max(1, outputHeight - scaledY);
+
+				geometryTiles.Add(new NhdMultiviewTileState(tileNumber, null, scaledX, scaledY, scaledWidth, scaledHeight, null));
+				tileNumber++;
+			}
+
+			return BuildGeometrySignature(geometryTiles);
+		}
+
+		private static int ScaleCoordinate(int value, int sourceSpan, int targetSpan)
+		{
+			if (sourceSpan <= 0 || targetSpan <= 0)
+				return 0;
+
+			if (value <= 0)
+				return 0;
+
+			var scaled = (double)value * targetSpan / sourceSpan;
+			return Math.Max(0, (int)Math.Round(scaled, MidpointRounding.AwayFromZero));
+		}
+
+		private static int ScaleLength(int value, int sourceSpan, int targetSpan)
+		{
+			if (sourceSpan <= 0 || targetSpan <= 0)
+				return 1;
+
+			if (value <= 0)
+				return 1;
+
+			var scaled = (double)value * targetSpan / sourceSpan;
+			return Math.Max(1, (int)Math.Round(scaled, MidpointRounding.AwayFromZero));
 		}
 
 		public bool ReprobeMultiviewLayouts()
@@ -563,6 +892,60 @@ namespace PepperDash.Essentials.Plugin
 			}
 
 			return ctl.SessionManager.TryReprobeAndLearnMultiviewLayouts(this, this);
+		}
+
+		public bool ApplyCustomMVLayout(string layoutKey)
+		{
+			if (!SupportsMultiview || IsTransmitter)
+			{
+				Debug.LogError("[{0}] Endpoint does not support multiview custom layout geometry", Key);
+				return false;
+			}
+
+			var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
+			if (ctl?.SessionManager == null)
+			{
+				Debug.LogError("[{0}] NHD-CTL session manager is not available for custom multiview geometry apply", Key);
+				return false;
+			}
+
+			return ctl.SessionManager.TryApplyCustomMVLayout(this, this, layoutKey);
+		}
+
+		public bool ApplyCustomMVLayoutWithSources(string layoutKey, IDictionary<int, string> sourceReferencesByWindow)
+		{
+			if (!SupportsMultiview || IsTransmitter)
+			{
+				Debug.LogError("[{0}] Endpoint does not support multiview custom layout content apply", Key);
+				return false;
+			}
+
+			var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
+			if (ctl?.SessionManager == null)
+			{
+				Debug.LogError("[{0}] NHD-CTL session manager is not available for custom multiview content apply", Key);
+				return false;
+			}
+
+			return ctl.SessionManager.TryApplyCustomMVLayoutWithSources(this, this, layoutKey, sourceReferencesByWindow);
+		}
+
+		public bool ApplyMVPreset(string presetKey)
+		{
+			if (!SupportsMultiview || IsTransmitter)
+			{
+				Debug.LogError("[{0}] Endpoint does not support multiview preset apply", Key);
+				return false;
+			}
+
+			var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
+			if (ctl?.SessionManager == null)
+			{
+				Debug.LogError("[{0}] NHD-CTL session manager is not available for multiview preset apply", Key);
+				return false;
+			}
+
+			return ctl.SessionManager.TryApplyMVPreset(this, this, presetKey);
 		}
 
 		public bool FullscreenMultiviewTile(int sourceTileReference)

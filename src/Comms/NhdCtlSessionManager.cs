@@ -4,8 +4,10 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using PepperDash.Core;
 using PepperDash.Essentials.Core;
+using PepperDash.Essentials.Plugin.Config;
 using PepperDash.Essentials.Plugin.Enums;
 using PepperDash.Essentials.Plugin.Routing;
 
@@ -27,6 +29,10 @@ namespace PepperDash.Essentials.Plugin.Comms
 
         private static readonly Regex VideoNotifyRegex = new Regex(
             "^notify\\s+video\\s+(?:(?<state1>[+-]|found|lost|on|off|sync|nosync|present|absent|online|offline|1|0)\\s+)?(?<reference>\\S+?)(?:\\s+(?<state2>[+-]|found|lost|on|off|sync|nosync|present|absent|online|offline|1|0))?(?:\\s+\\(.*\\))?$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex DeviceStatusKeyValueRegex = new Regex(
+            "^\"(?<key>[^\"]+)\"\\s*:\\s*\"(?<value>[^\"]*)\"\\s*,?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex MviewInformationLineRegex = new Regex(
@@ -83,7 +89,10 @@ namespace PepperDash.Essentials.Plugin.Comms
         private static readonly TimeSpan MatrixRefreshThrottle = TimeSpan.FromSeconds(2);
         private static readonly TimeSpan MsceneListRefreshThrottle = TimeSpan.FromSeconds(10);
         private static readonly TimeSpan PendingTileRouteExpiry = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan PendingFullscreenRequestExpiry = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan FullscreenRouteClearBypassWindow = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan VideoLostNotifyDebounce = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan DeviceStatusRefreshThrottle = TimeSpan.FromSeconds(10);
         private static readonly TimeSpan SessionProbeThrottle = TimeSpan.FromSeconds(2);
         private static readonly TimeSpan CredentialPromptThrottle = TimeSpan.FromSeconds(1);
         private static readonly TimeSpan LoginFailureThrottle = TimeSpan.FromMilliseconds(500);
@@ -106,6 +115,13 @@ namespace PepperDash.Essentials.Plugin.Comms
             public int AttemptedCount { get; set; }
             public int LearnedCount { get; set; }
             public string RequestedByKey { get; set; }
+        }
+
+        private sealed class PendingFullscreenRequest
+        {
+            public int SourceTileReference { get; set; }
+            public string RequestedByKey { get; set; }
+            public DateTime QueuedUtc { get; set; }
         }
 
         private sealed class StartupProbeRestoreState
@@ -137,18 +153,29 @@ namespace PepperDash.Essentials.Plugin.Comms
             public DateTime RequestedUtc { get; set; }
         }
 
+        private sealed class PendingDeviceStatusEntry
+        {
+            public string Alias { get; set; }
+            public string Name { get; set; }
+            public string HdmiOutResolution { get; set; }
+        }
+
         private readonly NhdCtlPro _ctl;
         private readonly CommunicationGather _gather;
         private readonly Dictionary<string, PendingMultiviewTileRoute> _pendingTileRoutes = new Dictionary<string, PendingMultiviewTileRoute>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, DateTime> _lastMsceneListRequestUtc = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _pendingLayoutGeometryCapture = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, PendingLayoutProbe> _pendingLayoutProbes = new Dictionary<string, PendingLayoutProbe>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, PendingFullscreenRequest> _pendingFullscreenRequests = new Dictionary<string, PendingFullscreenRequest>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, StartupProbeRestoreState> _startupProbeRestoreStates = new Dictionary<string, StartupProbeRestoreState>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _startupProbeCompleted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, PendingMultiviewFullscreen> _pendingFullscreen = new Dictionary<string, PendingMultiviewFullscreen>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _pendingFullscreenReturns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, MultiviewFullscreenReturnState> _fullscreenReturnStates = new Dictionary<string, MultiviewFullscreenReturnState>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, RecentFullscreenRoute> _recentFullscreenRoutes = new Dictionary<string, RecentFullscreenRoute>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, int> _pendingCustomWindowAudioApplies = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Timer> _pendingVideoLostDebounceTimers = new Dictionary<string, Timer>(StringComparer.OrdinalIgnoreCase);
+        private readonly object _videoLostDebounceLock = new object();
         private readonly HashSet<string> _subscribedNotificationReferences = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private DateTime? _lastMatrixRefreshUtc;
         private DateTime? _lastSessionProbeUtc;
@@ -167,10 +194,14 @@ namespace PepperDash.Essentials.Plugin.Comms
         private bool _isParsingMviewInformation;
         private bool _isParsingMatrixInformation;
         private bool _isParsingMsceneList;
+        private bool _isParsingDeviceStatus;
+        private int _deviceStatusBraceDepth;
+        private PendingDeviceStatusEntry _pendingDeviceStatusEntry;
         private NhdBaseDevice _pendingMviewEndpoint;
         private NhdMultiStreamMode _pendingMviewMode;
         private readonly List<NhdMultiviewTileState> _pendingMviewTiles = new List<NhdMultiviewTileState>();
         private eRoutingSignalType _pendingMatrixSignalType = eRoutingSignalType.AudioVideo;
+        private DateTime? _lastDeviceStatusRefreshUtc;
 
         public NhdCtlSessionManager(NhdCtlPro ctl)
         {
@@ -243,8 +274,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
                 Debug.LogMessage(
                     Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{0}] Sending multiview tile route immediately: layout='{1}', tile={2}, tx='{3}', rx='{4}', mode='{5}', activeTiles={6}",
+                    "$$$$$$$$$$ [{SourceKey}] Sending multiview tile route immediately: layout='{Layout}', tile={Tile}, tx='{TxRef}', rx='{RxRef}', mode='{Mode}', activeTiles={ActiveTiles}",
                     source,
+                    source.Key,
                     trimmedLayout,
                     tileReference,
                     txEndpoint.ApiEndpointReference,
@@ -275,8 +307,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Queued multiview tile route pending verification: layout='{1}', tile={2}, tx='{3}', rx='{4}', knownActiveTiles={5}, hasFreshState={6}",
+                "$$$$$$$$$$ [{SourceKey}] Queued multiview tile route pending verification: layout='{Layout}', tile={Tile}, tx='{TxRef}', rx='{RxRef}', knownActiveTiles={KnownActiveTiles}, hasFreshState={HasFreshState}",
                 source,
+                source.Key,
                 trimmedLayout,
                 tileReference,
                 txEndpoint.ApiEndpointReference,
@@ -322,12 +355,190 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Activating multiview preset layout '{1}' on endpoint '{2}'",
+                "$$$$$$$$$$ [{SourceKey}] Activating multiview preset layout '{1}' on endpoint '{2}'",
                 source,
+                source.Key,
                 trimmedLayout,
                 rxEndpoint.ApiEndpointReference);
 
             return NhdApiCommandSender.TrySend(source, command);
+        }
+
+        public bool TryApplyCustomMVLayout(IKeyed requestedBy, NhdBaseDevice rxEndpoint, string layoutKey)
+        {
+            return TryApplyCustomMVLayoutWithSources(requestedBy, rxEndpoint, layoutKey, null);
+        }
+
+        public bool TryApplyCustomMVLayoutWithSources(
+            IKeyed requestedBy,
+            NhdBaseDevice rxEndpoint,
+            string layoutKey,
+            IDictionary<int, string> sourceReferencesByWindow)
+        {
+            var source = requestedBy ?? _ctl;
+
+            if (rxEndpoint == null)
+            {
+                Debug.LogError("[{0}] Unable to apply custom multiview layout: RX endpoint is null", source.Key);
+                return false;
+            }
+
+            if (!rxEndpoint.SupportsMultiview)
+            {
+                Debug.LogError("[{0}] Endpoint '{1}' does not support multiview custom layout geometry", source.Key, rxEndpoint.Key);
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(layoutKey))
+            {
+                Debug.LogError("[{0}] Custom multiview layout key cannot be empty", source.Key);
+                return false;
+            }
+
+            if (!rxEndpoint.TryGetCustomMultiviewLayout(layoutKey, out var layout))
+            {
+                Debug.LogError("[{0}] Custom multiview layout '{1}' is not defined for endpoint '{2}'", source.Key, layoutKey, rxEndpoint.Key);
+                return false;
+            }
+
+            if (!TryBuildScaledCustomLayoutCommand(rxEndpoint, layout, sourceReferencesByWindow, out var command, out var outputWidth, out var outputHeight, out var usedQueriedResolution))
+            {
+                Debug.LogError("[{0}] Custom multiview layout '{1}' on endpoint '{2}' has invalid geometry", source.Key, layout.Key, rxEndpoint.Key);
+                return false;
+            }
+
+            if (!TryValidateCustomLayoutAudioMetadata(rxEndpoint, layout, out var audioValidationError))
+            {
+                Debug.LogError("[{0}] Custom multiview layout '{1}' on endpoint '{2}' has invalid audio metadata: {3}", source.Key, layout.Key, rxEndpoint.Key, audioValidationError);
+                return false;
+            }
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ [{SourceKey}] Applying custom multiview layout endpoint='{1}', layoutKey='{2}', mode='{3}', output={4}x{5}, usingQueriedResolution={6}, mappedSources={7}",
+                source,
+                source.Key,
+                rxEndpoint.Key,
+                layout.Key,
+                layout.Mode,
+                outputWidth,
+                outputHeight,
+                usedQueriedResolution ? "true" : "false",
+                sourceReferencesByWindow?.Count ?? 0);
+
+            var sent = NhdApiCommandSender.TrySend(source, command);
+            if (sent)
+            {
+                if (!TryApplyCustomLayoutAudioMetadata(source, rxEndpoint, layout))
+                {
+                    return false;
+                }
+
+                RequestMultiviewState(rxEndpoint, source, force: true);
+            }
+
+            return sent;
+        }
+
+        public bool TryApplyMVPreset(IKeyed requestedBy, NhdBaseDevice rxEndpoint, string presetKey)
+        {
+            var source = requestedBy ?? _ctl;
+
+            if (rxEndpoint == null)
+            {
+                Debug.LogError("[{0}] Unable to apply multiview preset: RX endpoint is null", source.Key);
+                return false;
+            }
+
+            if (!rxEndpoint.SupportsMultiview)
+            {
+                Debug.LogError("[{0}] Endpoint '{1}' does not support multiview preset apply", source.Key, rxEndpoint.Key);
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(presetKey))
+            {
+                Debug.LogError("[{0}] Multiview preset key cannot be empty", source.Key);
+                return false;
+            }
+
+            if (!rxEndpoint.TryGetMultiviewPreset(presetKey, out var preset))
+            {
+                Debug.LogError("[{0}] Multiview preset '{1}' is not defined for endpoint '{2}'", source.Key, presetKey, rxEndpoint.Key);
+                return false;
+            }
+
+            if (!TryValidateMultiviewPreset(source, rxEndpoint, preset, out var validationError))
+            {
+                Debug.LogError("[{0}] Multiview preset '{1}' is invalid for endpoint '{2}': {3}", source.Key, preset.Key, rxEndpoint.Key, validationError);
+                return false;
+            }
+
+            var explicitWindowSources = new Dictionary<int, string>();
+            var txByWindow = new Dictionary<int, NhdBaseDevice>();
+            foreach (var route in preset.WindowRoutes ?? new List<NhdMultiviewPresetWindowRouteProperties>())
+            {
+                if (route == null || route.WindowReference <= 0)
+                    continue;
+
+                if (string.IsNullOrWhiteSpace(route.TxKey))
+                    continue;
+
+                if (!TryResolveTransmitter(route.TxKey, out var txEndpoint))
+                    return false;
+
+                explicitWindowSources[route.WindowReference] = txEndpoint.ApiEndpointReference;
+                txByWindow[route.WindowReference] = txEndpoint;
+            }
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ [{SourceKey}] Applying multiview preset endpoint='{1}', presetKey='{2}', layoutSource='{3}', layout='{4}', routeCount={5}",
+                source,
+                source.Key,
+                rxEndpoint.Key,
+                preset.Key,
+                preset.LayoutSource,
+                preset.Layout,
+                explicitWindowSources.Count);
+
+            var layoutApplied = false;
+            var normalizedLayout = preset.Layout.Trim();
+            if (preset.LayoutSource == NhdMultiviewPresetLayoutSource.Config)
+            {
+                layoutApplied = TryApplyCustomMVLayoutWithSources(source, rxEndpoint, normalizedLayout, explicitWindowSources);
+            }
+            else
+            {
+                layoutApplied = TryApplyControllerLayoutWithWindowRoutes(source, rxEndpoint, normalizedLayout, explicitWindowSources);
+            }
+
+            if (!layoutApplied)
+                return false;
+
+            if (!TryApplyPresetAudioSelection(source, rxEndpoint, preset, explicitWindowSources, txByWindow))
+                return false;
+
+            RequestMultiviewState(rxEndpoint, source, force: true);
+            return true;
+
+            bool TryResolveTransmitter(string txKey, out NhdBaseDevice txEndpoint)
+            {
+                txEndpoint = null;
+
+                var normalizedTxKey = txKey?.Trim();
+                if (string.IsNullOrWhiteSpace(normalizedTxKey))
+                    return false;
+
+                txEndpoint = DeviceManager.GetDeviceForKey(normalizedTxKey) as NhdBaseDevice;
+                if (txEndpoint == null || !txEndpoint.IsTransmitter)
+                {
+                    Debug.LogError("[{0}] Multiview preset '{1}' references unknown TX key '{2}'", source.Key, preset.Key, normalizedTxKey);
+                    return false;
+                }
+
+                return true;
+            }
         }
 
         public bool TryFullscreenMultiviewTile(IKeyed requestedBy, NhdBaseDevice rxEndpoint, int sourceTileReference)
@@ -354,8 +565,28 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             if (!rxEndpoint.IsMultiviewStateFresh(MultiviewStateFreshness))
             {
+                _pendingFullscreenRequests[rxEndpoint.Key] = new PendingFullscreenRequest
+                {
+                    SourceTileReference = sourceTileReference,
+                    RequestedByKey = source.Key,
+                    QueuedUtc = DateTime.UtcNow,
+                };
+
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{SourceKey}] Queued fullscreen request pending multiview state refresh endpoint='{1}', sourceTile={2}",
+                    source,
+                    source.Key,
+                    rxEndpoint.Key,
+                    sourceTileReference);
+
                 RequestMultiviewState(rxEndpoint, source, force: true);
-                Debug.LogError("[{0}] Multiview state is stale on endpoint '{1}'. Refresh requested; try fullscreen again.", source.Key, rxEndpoint.Key);
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{SourceKey}] Multiview state is stale on endpoint '{1}'. Refresh requested; fullscreen will retry when state updates.",
+                    source,
+                    source.Key,
+                    rxEndpoint.Key);
                 return false;
             }
 
@@ -403,8 +634,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Starting fullscreen transition endpoint='{1}', fromLayout='{2}', sourceTile={3}, sourceRef='{4}'",
+                "$$$$$$$$$$ [{SourceKey}] Starting fullscreen transition endpoint='{1}', fromLayout='{2}', sourceTile={3}, sourceRef='{4}'",
                 source,
+                source.Key,
                 rxEndpoint.Key,
                 previousLayout,
                 sourceTileReference,
@@ -433,8 +665,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Returning from fullscreen endpoint='{1}' to layout='{2}'",
+                "$$$$$$$$$$ [{SourceKey}] Returning from fullscreen endpoint='{1}' to layout='{2}'",
                 source,
+                source.Key,
                 rxEndpoint.Key,
                 returnLayout);
 
@@ -510,8 +743,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Starting multiview layout probe endpoint='{1}', totalLayouts={2}",
+                "$$$$$$$$$$ [{SourceKey}] Starting multiview layout probe endpoint='{1}', totalLayouts={2}",
                 source,
+                source.Key,
                 rxEndpoint.Key,
                 orderedLayouts.Count);
 
@@ -543,8 +777,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Starting explicit multiview layout reprobe for endpoint '{1}'",
+                "$$$$$$$$$$ [{SourceKey}] Starting explicit multiview layout reprobe for endpoint '{1}'",
                 source,
+                source.Key,
                 rxEndpoint.Key);
 
             return TryProbeAndLearnMultiviewLayouts(source, rxEndpoint);
@@ -553,6 +788,7 @@ namespace PepperDash.Essentials.Plugin.Comms
         private void HandleLineReceived(object sender, GenericCommMethodReceiveTextArgs args)
         {
             ExpirePendingTileRoutes();
+            ExpirePendingFullscreenRequests();
 
             var line = (args.Text ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(line))
@@ -588,6 +824,9 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return;
 
             if (TryHandleAliasMappingLine(line))
+                return;
+
+            if (TryHandleDeviceStatusBlock(line))
                 return;
 
             if (TryHandleEndpointNotifyLine(line))
@@ -1054,6 +1293,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             NhdApiCommandSender.TrySend(_ctl, "config set session alias on");
             NhdApiCommandSender.TrySend(_ctl, "config get name");
             NhdApiCommandSender.TrySend(_ctl, "config get devicelist");
+            RequestDeviceStatus(_ctl, force: true);
 
             foreach (var endpoint in GetEndpoints())
             {
@@ -1150,8 +1390,9 @@ namespace PepperDash.Essentials.Plugin.Comms
             {
                 Debug.LogMessage(
                     Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{0}] mscene active response unresolved endpoint='{1}', layout='{2}', result='{3}'",
+                    "$$$$$$$$$$ [{SourceKey}] mscene active response unresolved endpoint='{1}', layout='{2}', result='{3}'",
                     _ctl,
+                    _ctl.Key,
                     reference,
                     layout,
                     success ? "success" : "failure");
@@ -1186,8 +1427,9 @@ namespace PepperDash.Essentials.Plugin.Comms
                         SetFullscreenReturnState(endpoint, pendingFullscreen.PreviousLayoutName);
                         Debug.LogMessage(
                             Serilog.Events.LogEventLevel.Information,
-                            "$$$$$$$$$$ [{0}] Fullscreen transition routed tile source endpoint='{1}', sourceTile={2}, sourceRef='{3}'",
+                            "$$$$$$$$$$ [{SourceKey}] Fullscreen transition routed tile source endpoint='{1}', sourceTile={2}, sourceRef='{3}'",
                             _ctl,
+                            _ctl.Key,
                             endpoint.Key,
                             pendingFullscreen.SourceTileReference,
                             pendingFullscreen.SourceReference);
@@ -1200,8 +1442,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
                         Debug.LogMessage(
                             Serilog.Events.LogEventLevel.Information,
-                            "$$$$$$$$$$ [{0}] Fullscreen transition route failed; rollback to previous layout '{1}' on endpoint '{2}' was {3}",
+                            "$$$$$$$$$$ [{SourceKey}] Fullscreen transition route failed; rollback to previous layout '{1}' on endpoint '{2}' was {3}",
                             _ctl,
+                            _ctl.Key,
                             pendingFullscreen.PreviousLayoutName,
                             endpoint.Key,
                             rollbackSent ? "sent" : "not sent");
@@ -1237,8 +1480,9 @@ namespace PepperDash.Essentials.Plugin.Comms
                     endpoint.SetMultiviewRuntimeState(inferredMode, inferredTileCount);
                     Debug.LogMessage(
                         Serilog.Events.LogEventLevel.Information,
-                        "$$$$$$$$$$ [{0}] Inferred multiview layout shape endpoint='{1}', layout='{2}', mode='{3}', tiles={4}",
+                        "$$$$$$$$$$ [{SourceKey}] Inferred multiview layout shape endpoint='{1}', layout='{2}', mode='{3}', tiles={4}",
                         _ctl,
+                        _ctl.Key,
                         endpoint.Key,
                         layout,
                         inferredMode,
@@ -1260,8 +1504,9 @@ namespace PepperDash.Essentials.Plugin.Comms
                 probe.AttemptedCount++;
                 Debug.LogMessage(
                     Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{0}] Layout probe activation failed endpoint='{1}', layout='{2}', attempted={3}",
+                    "$$$$$$$$$$ [{SourceKey}] Layout probe activation failed endpoint='{1}', layout='{2}', attempted={3}",
                     _ctl,
+                    _ctl.Key,
                     endpoint.Key,
                     layout,
                     probe.AttemptedCount);
@@ -1271,8 +1516,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] mscene active endpoint='{1}', layout='{2}', result='{3}'",
+                "$$$$$$$$$$ [{SourceKey}] mscene active endpoint='{1}', layout='{2}', result='{3}'",
                 _ctl,
+                _ctl.Key,
                 endpoint.Key,
                 layout,
                 success ? "success" : "failure");
@@ -1297,8 +1543,9 @@ namespace PepperDash.Essentials.Plugin.Comms
             {
                 Debug.LogMessage(
                     Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{0}] mscene change unresolved endpoint='{1}', layout='{2}', tile='{3}', source='{4}', result='{5}'",
+                    "$$$$$$$$$$ [{SourceKey}] mscene change unresolved endpoint='{1}', layout='{2}', tile='{3}', source='{4}', result='{5}'",
                     _ctl,
+                    _ctl.Key,
                     reference,
                     layout,
                     tile,
@@ -1319,13 +1566,21 @@ namespace PepperDash.Essentials.Plugin.Comms
                 }
 
                 RequestMultiviewState(endpoint, force: true);
-                ClearFullscreenReturnState(endpoint, "layout tile changed");
+
+                var shouldKeepFullscreenReturn = int.TryParse(tile, NumberStyles.Integer, CultureInfo.InvariantCulture, out var tileReference)
+                    && ShouldBypassFullscreenReturnClearForRoute(endpoint, source, layout, tileReference);
+
+                if (!shouldKeepFullscreenReturn)
+                {
+                    ClearFullscreenReturnState(endpoint, "layout tile changed");
+                }
             }
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] mscene change endpoint='{1}', layout='{2}', tile='{3}', source='{4}', result='{5}'",
+                "$$$$$$$$$$ [{SourceKey}] mscene change endpoint='{1}', layout='{2}', tile='{3}', source='{4}', result='{5}'",
                 _ctl,
+                _ctl.Key,
                 endpoint.Key,
                 layout,
                 tile,
@@ -1370,8 +1625,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] mscene set audio reference='{1}', resolvedEndpoint='{2}', layout='{3}', mode='{4}', target='{5}', result='{6}'",
+                "$$$$$$$$$$ [{SourceKey}] mscene set audio reference='{1}', resolvedEndpoint='{2}', layout='{3}', mode='{4}', target='{5}', result='{6}'",
                 _ctl,
+                _ctl.Key,
                 reference,
                 endpoint?.Key ?? "unresolved",
                 layout,
@@ -1401,8 +1657,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] mview set audio reference='{1}', resolvedEndpoint='{2}', source='{3}', result='{4}'",
+                "$$$$$$$$$$ [{SourceKey}] mview set audio reference='{1}', resolvedEndpoint='{2}', source='{3}', result='{4}'",
                 _ctl,
+                _ctl.Key,
                 reference,
                 endpoint?.Key ?? "unresolved",
                 source,
@@ -1424,13 +1681,13 @@ namespace PepperDash.Essentials.Plugin.Comms
             var endpoint = ResolveEndpoint(alias) ?? ResolveEndpoint(hostname);
             if (endpoint == null)
             {
-                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Alias mapping unresolved. Hostname='{1}', Alias='{2}'", _ctl, hostname, alias ?? "null");
+                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Alias mapping unresolved. Hostname='{1}', Alias='{2}'", _ctl, _ctl.Key, hostname, alias ?? "null");
                 return true;
             }
 
             endpoint.SetResolvedHostname(hostname);
             endpoint.SetOnlineState(true);
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Alias mapping resolved endpoint='{1}', Hostname='{2}', Alias='{3}'", _ctl, endpoint.Key, hostname, alias ?? "null");
+            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Alias mapping resolved endpoint='{1}', Hostname='{2}', Alias='{3}'", _ctl, _ctl.Key, endpoint.Key, hostname, alias ?? "null");
 
             EnsureNotificationsSubscribed(hostname);
             EnsureNotificationsSubscribed(alias);
@@ -1454,7 +1711,7 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             var endpoint = ResolveEndpoint(reference);
             endpoint?.SetOnlineState(isOnline);
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Notify endpoint reference='{1}', state='{2}', resolvedEndpoint='{3}'", _ctl, reference, isOnline ? "online" : "offline", endpoint?.Key ?? "unresolved");
+            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Notify endpoint reference='{1}', state='{2}', resolvedEndpoint='{3}'", _ctl, _ctl.Key, reference, isOnline ? "online" : "offline", endpoint?.Key ?? "unresolved");
 
             EnsureNotificationsSubscribed(reference);
 
@@ -1463,6 +1720,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 RequestMultiviewState(endpoint);
                 RequestMultiviewPresetLayouts(endpoint);
                 RequestMatrixState();
+                RequestDeviceStatus();
                 TryStartStartupProbeIfReady(endpoint);
             }
 
@@ -1486,24 +1744,139 @@ namespace PepperDash.Essentials.Plugin.Comms
             {
                 Debug.LogMessage(
                     Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{0}] Notify video state could not be parsed: reference='{1}', token='{2}'",
+                    "$$$$$$$$$$ [{SourceKey}] Notify video state could not be parsed: reference='{1}', token='{2}'",
                     _ctl,
+                    _ctl.Key,
                     reference,
                     stateToken);
                 return true;
             }
 
             var endpoint = ResolveEndpoint(reference);
-            endpoint?.SetInputSyncState(syncDetected);
+
+            if (endpoint == null)
+            {
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{SourceKey}] Notify video reference='{1}' could not be resolved; state='{2}'",
+                    _ctl,
+                    _ctl.Key,
+                    reference,
+                    syncDetected ? "detected" : "lost");
+                return true;
+            }
+
+            if (!syncDetected)
+            {
+                ScheduleVideoLostDebounce(endpoint, reference);
+
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{SourceKey}] Notify video lost queued for debounce endpoint='{1}', reference='{2}', delayMs={3}",
+                    _ctl,
+                    _ctl.Key,
+                    endpoint.Key,
+                    reference,
+                    (int)VideoLostNotifyDebounce.TotalMilliseconds);
+
+                return true;
+            }
+
+            if (CancelPendingVideoLostDebounce(endpoint.Key))
+            {
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{SourceKey}] Notify video found suppressed during debounce endpoint='{1}', reference='{2}'",
+                    _ctl,
+                    _ctl.Key,
+                    endpoint.Key,
+                    reference);
+
+                return true;
+            }
+
+            endpoint.SetInputSyncState(true);
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Notify video reference='{1}', sync='{2}', resolvedEndpoint='{3}'",
+                "$$$$$$$$$$ [{SourceKey}] Notify video reference='{1}', sync='{2}', resolvedEndpoint='{3}'",
                 _ctl,
+                _ctl.Key,
                 reference,
                 syncDetected ? "detected" : "lost",
-                endpoint?.Key ?? "unresolved");
+                endpoint.Key);
 
+            return true;
+        }
+
+        private void ScheduleVideoLostDebounce(NhdBaseDevice endpoint, string reference)
+        {
+            if (endpoint == null)
+                return;
+
+            Timer existing = null;
+            lock (_videoLostDebounceLock)
+            {
+                if (_pendingVideoLostDebounceTimers.TryGetValue(endpoint.Key, out existing))
+                {
+                    _pendingVideoLostDebounceTimers.Remove(endpoint.Key);
+                }
+            }
+
+            existing?.Dispose();
+
+            Timer timer = null;
+            timer = new Timer(_ =>
+            {
+                var shouldApply = false;
+                lock (_videoLostDebounceLock)
+                {
+                    if (_pendingVideoLostDebounceTimers.TryGetValue(endpoint.Key, out var pendingTimer)
+                        && ReferenceEquals(pendingTimer, timer))
+                    {
+                        _pendingVideoLostDebounceTimers.Remove(endpoint.Key);
+                        shouldApply = true;
+                    }
+                }
+
+                timer?.Dispose();
+
+                if (!shouldApply)
+                    return;
+
+                endpoint.SetInputSyncState(false);
+
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{SourceKey}] Debounced video lost applied endpoint='{1}', reference='{2}', delayMs={3}",
+                    _ctl,
+                    _ctl.Key,
+                    endpoint.Key,
+                    reference,
+                    (int)VideoLostNotifyDebounce.TotalMilliseconds);
+            }, null, VideoLostNotifyDebounce, Timeout.InfiniteTimeSpan);
+
+            lock (_videoLostDebounceLock)
+            {
+                _pendingVideoLostDebounceTimers[endpoint.Key] = timer;
+            }
+        }
+
+        private bool CancelPendingVideoLostDebounce(string endpointKey)
+        {
+            if (string.IsNullOrWhiteSpace(endpointKey))
+                return false;
+
+            Timer timer = null;
+            lock (_videoLostDebounceLock)
+            {
+                if (!_pendingVideoLostDebounceTimers.TryGetValue(endpointKey, out timer))
+                    return false;
+
+                _pendingVideoLostDebounceTimers.Remove(endpointKey);
+            }
+
+            timer?.Dispose();
             return true;
         }
 
@@ -1522,8 +1895,9 @@ namespace PepperDash.Essentials.Plugin.Comms
             {
                 Debug.LogMessage(
                     Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{0}] Notify sink state could not be parsed: reference='{1}', token='{2}'",
+                    "$$$$$$$$$$ [{SourceKey}] Notify sink state could not be parsed: reference='{1}', token='{2}'",
                     _ctl,
+                    _ctl.Key,
                     reference,
                     stateToken);
                 return true;
@@ -1537,14 +1911,161 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Notify sink reference='{1}', state='{2}', resolvedEndpoint='{3}', appliedToSync='{4}'",
+                "$$$$$$$$$$ [{SourceKey}] Notify sink reference='{1}', state='{2}', resolvedEndpoint='{3}', appliedToSync='{4}'",
                 _ctl,
+                _ctl.Key,
                 reference,
                 sinkDetected ? "found" : "lost",
                 endpoint?.Key ?? "unresolved",
                 endpoint?.IsTransmitter == true ? "yes" : "no");
 
             return true;
+        }
+
+        private bool TryHandleDeviceStatusBlock(string line)
+        {
+            if (!_isParsingDeviceStatus)
+            {
+                if (!line.StartsWith("devices status info:", StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                _isParsingDeviceStatus = true;
+                _deviceStatusBraceDepth = 0;
+                _pendingDeviceStatusEntry = null;
+                return true;
+            }
+
+            return TryConsumeDeviceStatusLine(line);
+        }
+
+        private bool TryConsumeDeviceStatusLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                return true;
+
+            if (IsLikelyApiResponseLine(line))
+                return false;
+
+            var trimmed = line.Trim();
+
+            var openCount = CountCharacter(trimmed, '{');
+            for (var i = 0; i < openCount; i++)
+            {
+                if (_deviceStatusBraceDepth == 1 && _pendingDeviceStatusEntry == null)
+                {
+                    _pendingDeviceStatusEntry = new PendingDeviceStatusEntry();
+                }
+
+                _deviceStatusBraceDepth++;
+            }
+
+            var keyValueMatch = DeviceStatusKeyValueRegex.Match(trimmed);
+            if (keyValueMatch.Success)
+            {
+                if (_pendingDeviceStatusEntry == null && _deviceStatusBraceDepth >= 2)
+                {
+                    _pendingDeviceStatusEntry = new PendingDeviceStatusEntry();
+                }
+
+                TryApplyDeviceStatusAttribute(
+                    _pendingDeviceStatusEntry,
+                    keyValueMatch.Groups["key"].Value,
+                    keyValueMatch.Groups["value"].Value);
+            }
+
+            var closeCount = CountCharacter(trimmed, '}');
+            for (var i = 0; i < closeCount; i++)
+            {
+                if (_deviceStatusBraceDepth == 2)
+                {
+                    FinalizePendingDeviceStatusEntry();
+                    _pendingDeviceStatusEntry = null;
+                }
+
+                if (_deviceStatusBraceDepth > 0)
+                {
+                    _deviceStatusBraceDepth--;
+                }
+            }
+
+            if (_deviceStatusBraceDepth <= 0 && closeCount > 0)
+            {
+                _isParsingDeviceStatus = false;
+                _deviceStatusBraceDepth = 0;
+                _pendingDeviceStatusEntry = null;
+            }
+
+            return true;
+        }
+
+        private static int CountCharacter(string value, char character)
+        {
+            if (string.IsNullOrEmpty(value))
+                return 0;
+
+            var count = 0;
+            for (var i = 0; i < value.Length; i++)
+            {
+                if (value[i] == character)
+                    count++;
+            }
+
+            return count;
+        }
+
+        private static void TryApplyDeviceStatusAttribute(PendingDeviceStatusEntry entry, string key, string value)
+        {
+            if (entry == null || string.IsNullOrWhiteSpace(key))
+                return;
+
+            var normalizedKey = key.Trim().ToLowerInvariant();
+            var normalizedValue = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+            switch (normalizedKey)
+            {
+                case "aliasname":
+                    entry.Alias = normalizedValue;
+                    break;
+
+                case "name":
+                    entry.Name = normalizedValue;
+                    break;
+
+                case "hdmi out resolution":
+                    entry.HdmiOutResolution = normalizedValue;
+                    break;
+            }
+        }
+
+        private void FinalizePendingDeviceStatusEntry()
+        {
+            if (_pendingDeviceStatusEntry == null)
+                return;
+
+            NhdBaseDevice endpoint = null;
+
+            if (!string.IsNullOrWhiteSpace(_pendingDeviceStatusEntry.Alias))
+            {
+                endpoint = ResolveEndpoint(_pendingDeviceStatusEntry.Alias);
+            }
+
+            if (endpoint == null && !string.IsNullOrWhiteSpace(_pendingDeviceStatusEntry.Name))
+            {
+                endpoint = ResolveEndpoint(_pendingDeviceStatusEntry.Name);
+            }
+
+            if (endpoint == null || endpoint.IsTransmitter)
+                return;
+
+            if (!string.IsNullOrWhiteSpace(_pendingDeviceStatusEntry.Name))
+            {
+                endpoint.SetResolvedHostname(_pendingDeviceStatusEntry.Name);
+            }
+
+            if (!string.IsNullOrWhiteSpace(_pendingDeviceStatusEntry.HdmiOutResolution))
+            {
+                endpoint.SetHdmiOutResolution(_pendingDeviceStatusEntry.HdmiOutResolution);
+            }
         }
 
         private static bool TryParseVideoNotifyState(string token, out bool syncDetected)
@@ -1592,7 +2113,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Processing devicelist with {1} references", _ctl, refs.Count);
+            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Processing devicelist with {1} references", _ctl, _ctl.Key, refs.Count);
 
             var listedEndpoints = new HashSet<NhdBaseDevice>();
             foreach (var reference in refs)
@@ -1602,13 +2123,13 @@ namespace PepperDash.Essentials.Plugin.Comms
                 var endpoint = ResolveEndpoint(reference);
                 if (endpoint == null)
                 {
-                    Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Devicelist reference unresolved: '{1}'", _ctl, reference);
+                    Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Devicelist reference unresolved: '{1}'", _ctl, _ctl.Key, reference);
                     continue;
                 }
 
                 listedEndpoints.Add(endpoint);
                 endpoint.SetOnlineState(true);
-                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Devicelist marked endpoint online: '{1}' (ref='{2}')", _ctl, endpoint.Key, reference);
+                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Devicelist marked endpoint online: '{1}' (ref='{2}')", _ctl, _ctl.Key, endpoint.Key, reference);
                 RequestMultiviewState(endpoint);
                 RequestMultiviewPresetLayouts(endpoint);
                 RequestMatrixState();
@@ -1618,7 +2139,12 @@ namespace PepperDash.Essentials.Plugin.Comms
             foreach (var endpoint in GetEndpoints().Where(e => !listedEndpoints.Contains(e)))
             {
                 endpoint.SetOnlineState(false);
-                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Devicelist marked endpoint offline: '{1}'", _ctl, endpoint.Key);
+                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Devicelist marked endpoint offline: '{1}'", _ctl, _ctl.Key, endpoint.Key);
+            }
+
+            if (listedEndpoints.Count > 0)
+            {
+                RequestDeviceStatus();
             }
 
             return true;
@@ -1715,8 +2241,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Applied tracked matrix route from CTL feedback: tx='{1}', rx='{2}', signal='{3}'",
+                "$$$$$$$$$$ [{SourceKey}] Applied tracked matrix route from CTL feedback: tx='{1}', rx='{2}', signal='{3}'",
                 _ctl,
+                _ctl.Key,
                 txEndpointKey ?? "null",
                 rxEndpoint.Key,
                 signalType);
@@ -1795,8 +2322,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Parsed {1} preset layouts for endpoint '{2}'",
+                "$$$$$$$$$$ [{SourceKey}] Parsed {1} preset layouts for endpoint '{2}'",
                 _ctl,
+                _ctl.Key,
                 layouts.Count,
                 endpoint.Key);
 
@@ -1904,7 +2432,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             _pendingMviewEndpoint.SetMultiviewRuntimeState(_pendingMviewMode, _pendingMviewTiles);
             CaptureOrInferActiveLayout(_pendingMviewEndpoint);
+            TryDispatchPendingCustomWindowAudioForEndpoint(_pendingMviewEndpoint);
             TryDispatchPendingTileRouteForEndpoint(_pendingMviewEndpoint);
+            TryDispatchPendingFullscreenRequestForEndpoint(_pendingMviewEndpoint);
             TryStartStartupProbeIfReady(_pendingMviewEndpoint);
 
             _pendingMviewEndpoint = null;
@@ -1928,8 +2458,9 @@ namespace PepperDash.Essentials.Plugin.Comms
                     TryMatchStartupProbeOriginalLayout(endpoint, recalledLayout);
                     Debug.LogMessage(
                         Serilog.Events.LogEventLevel.Information,
-                        "$$$$$$$$$$ [{0}] Learned layout geometry endpoint='{1}', layout='{2}'",
+                        "$$$$$$$$$$ [{SourceKey}] Learned layout geometry endpoint='{1}', layout='{2}'",
                         _ctl,
+                        _ctl.Key,
                         endpoint.Key,
                         recalledLayout);
                 }
@@ -1947,24 +2478,46 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return;
             }
 
-            if (!endpoint.TryIdentifyPresetLayoutByActiveGeometry(out var inferredLayout))
-                return;
-
-            var changed = !string.Equals(endpoint.ActivePresetMultiviewLayoutName, inferredLayout, StringComparison.OrdinalIgnoreCase)
-                || !endpoint.ActivePresetMultiviewLayoutInferred;
-
-            endpoint.SetActivePresetMultiviewLayout(inferredLayout, inferred: true);
-
-            if (changed)
+            if (endpoint.TryIdentifyPresetLayoutByActiveGeometry(out var inferredLayout))
             {
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{0}] Inferred active layout from multiview state endpoint='{1}', layout='{2}', mode='{3}', tiles={4}",
-                    _ctl,
-                    endpoint.Key,
-                    inferredLayout,
-                    endpoint.MultiStreamMode,
-                    endpoint.ActiveTileCount);
+                var presetChanged = !string.Equals(endpoint.ActivePresetMultiviewLayoutName, inferredLayout, StringComparison.OrdinalIgnoreCase)
+                    || !endpoint.ActivePresetMultiviewLayoutInferred;
+
+                endpoint.SetActivePresetMultiviewLayout(inferredLayout, inferred: true);
+
+                if (presetChanged)
+                {
+                    Debug.LogMessage(
+                        Serilog.Events.LogEventLevel.Information,
+                        "$$$$$$$$$$ [{SourceKey}] Inferred active controller layout from multiview state endpoint='{EndpointKey}', layout='{Layout}', mode='{Mode}', tiles={Tiles}",
+                        _ctl,
+                        _ctl.Key,
+                        endpoint.Key,
+                        inferredLayout,
+                        endpoint.MultiStreamMode,
+                        endpoint.ActiveTileCount);
+                }
+            }
+
+            if (endpoint.TryIdentifyCustomLayoutByActiveGeometry(out var inferredCustomLayout))
+            {
+                var customChanged = !string.Equals(endpoint.ActiveCustomMultiviewLayoutKey, inferredCustomLayout, StringComparison.OrdinalIgnoreCase)
+                    || !endpoint.ActiveCustomMultiviewLayoutInferred;
+
+                endpoint.SetActiveCustomMultiviewLayout(inferredCustomLayout, inferred: true);
+
+                if (customChanged)
+                {
+                    Debug.LogMessage(
+                        Serilog.Events.LogEventLevel.Information,
+                        "$$$$$$$$$$ [{SourceKey}] Inferred active custom layout from multiview state endpoint='{EndpointKey}', layoutKey='{LayoutKey}', mode='{Mode}', tiles={Tiles}",
+                        _ctl,
+                        _ctl.Key,
+                        endpoint.Key,
+                        inferredCustomLayout,
+                        endpoint.MultiStreamMode,
+                        endpoint.ActiveTileCount);
+                }
             }
         }
 
@@ -2011,6 +2564,530 @@ namespace PepperDash.Essentials.Plugin.Comms
             return tileReference <= rxEndpoint.ActiveTileCount;
         }
 
+        private static bool TryBuildScaledCustomLayoutCommand(
+            NhdBaseDevice rxEndpoint,
+            NhdCustomMultiviewLayoutProperties layout,
+            IDictionary<int, string> sourceReferencesByWindow,
+            out string command,
+            out int outputWidth,
+            out int outputHeight,
+            out bool usedQueriedResolution)
+        {
+            command = null;
+            outputWidth = 0;
+            outputHeight = 0;
+            usedQueriedResolution = false;
+
+            if (rxEndpoint == null || layout == null)
+                return false;
+
+            var windows = (layout.Windows ?? new List<NhdCustomMultiviewWindowProperties>())
+                .Where(w => w != null && w.WindowReference > 0)
+                .OrderBy(w => w.WindowReference)
+                .ToList();
+
+            if (windows.Count == 0)
+                return false;
+
+            var canvasWidth = layout.CanvasWidth > 0 ? layout.CanvasWidth : 1920;
+            var canvasHeight = layout.CanvasHeight > 0 ? layout.CanvasHeight : 1080;
+
+            if (rxEndpoint.TryGetHdmiOutResolutionDimensions(out var queriedWidth, out var queriedHeight)
+                && queriedWidth > 0
+                && queriedHeight > 0)
+            {
+                outputWidth = queriedWidth;
+                outputHeight = queriedHeight;
+                usedQueriedResolution = true;
+            }
+            else
+            {
+                outputWidth = canvasWidth;
+                outputHeight = canvasHeight;
+            }
+
+            var descriptors = new List<string>();
+            foreach (var window in windows)
+            {
+                if (window.Width <= 0 || window.Height <= 0)
+                    return false;
+
+                var scaledX = ScaleCoordinate(window.X, canvasWidth, outputWidth);
+                var scaledY = ScaleCoordinate(window.Y, canvasHeight, outputHeight);
+                var scaledWidth = ScaleLength(window.Width, canvasWidth, outputWidth);
+                var scaledHeight = ScaleLength(window.Height, canvasHeight, outputHeight);
+
+                if (scaledX >= outputWidth)
+                    scaledX = Math.Max(0, outputWidth - 1);
+
+                if (scaledY >= outputHeight)
+                    scaledY = Math.Max(0, outputHeight - 1);
+
+                if (scaledX + scaledWidth > outputWidth)
+                    scaledWidth = Math.Max(1, outputWidth - scaledX);
+
+                if (scaledY + scaledHeight > outputHeight)
+                    scaledHeight = Math.Max(1, outputHeight - scaledY);
+
+                var sourceReference = "NULL";
+                if (sourceReferencesByWindow != null
+                    && sourceReferencesByWindow.TryGetValue(window.WindowReference, out var mappedSource)
+                    && !string.IsNullOrWhiteSpace(mappedSource))
+                {
+                    sourceReference = mappedSource.Trim();
+                }
+
+                var scaleMode = window.Scale == NhdMultiviewScaleMode.Fit ? "fit" : "stretch";
+                var descriptor = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0}:{1}_{2}_{3}_{4}:{5}",
+                    sourceReference,
+                    scaledX,
+                    scaledY,
+                    scaledWidth,
+                    scaledHeight,
+                    scaleMode);
+
+                if (window.Rotation.HasValue)
+                {
+                    descriptor = string.Format(CultureInfo.InvariantCulture, "{0}:{1}", descriptor, window.Rotation.Value);
+                }
+
+                descriptors.Add(descriptor);
+            }
+
+            var modeToken = layout.Mode == NhdMultiStreamMode.Overlay ? "overlay" : "tile";
+            command = string.Format(
+                CultureInfo.InvariantCulture,
+                "mview set {0} {1} {2}",
+                rxEndpoint.ApiEndpointReference,
+                modeToken,
+                string.Join(" ", descriptors));
+
+            return true;
+        }
+
+        private bool TryValidateMultiviewPreset(
+            IKeyed source,
+            NhdBaseDevice rxEndpoint,
+            NhdMultiviewPresetProperties preset,
+            out string validationError)
+        {
+            validationError = null;
+
+            if (source == null || rxEndpoint == null || preset == null)
+            {
+                validationError = "source/endpoint/preset is null";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(preset.Layout))
+            {
+                validationError = "layout is required";
+                return false;
+            }
+
+            var normalizedLayout = preset.Layout.Trim();
+
+            if (preset.LayoutSource == NhdMultiviewPresetLayoutSource.Config)
+            {
+                if (!rxEndpoint.TryGetCustomMultiviewLayout(normalizedLayout, out _))
+                {
+                    validationError = string.Format(CultureInfo.InvariantCulture, "config layout '{0}' is not defined in CustomMultiviewLayouts", normalizedLayout);
+                    return false;
+                }
+            }
+            else
+            {
+                var knownByController = rxEndpoint.AvailablePresetMultiviewLayouts.Contains(normalizedLayout)
+                    || NhdBaseDevice.TryInferPresetLayoutShape(normalizedLayout, out _, out _);
+
+                if (!knownByController)
+                {
+                    validationError = string.Format(CultureInfo.InvariantCulture, "controller layout '{0}' is not known", normalizedLayout);
+                    return false;
+                }
+            }
+
+            var duplicateWindow = (preset.WindowRoutes ?? new List<NhdMultiviewPresetWindowRouteProperties>())
+                .Where(r => r != null && r.WindowReference > 0)
+                .GroupBy(r => r.WindowReference)
+                .FirstOrDefault(g => g.Count() > 1);
+
+            if (duplicateWindow != null)
+            {
+                validationError = string.Format(CultureInfo.InvariantCulture, "duplicate WindowReference '{0}' in WindowRoutes", duplicateWindow.Key);
+                return false;
+            }
+
+            var invalidWindow = (preset.WindowRoutes ?? new List<NhdMultiviewPresetWindowRouteProperties>())
+                .FirstOrDefault(r => r != null && r.WindowReference <= 0);
+            if (invalidWindow != null)
+            {
+                validationError = "WindowRoutes contains WindowReference <= 0";
+                return false;
+            }
+
+            foreach (var route in preset.WindowRoutes ?? new List<NhdMultiviewPresetWindowRouteProperties>())
+            {
+                if (route == null || string.IsNullOrWhiteSpace(route.TxKey))
+                    continue;
+
+                var tx = DeviceManager.GetDeviceForKey(route.TxKey.Trim()) as NhdBaseDevice;
+                if (tx == null || !tx.IsTransmitter)
+                {
+                    validationError = string.Format(CultureInfo.InvariantCulture, "WindowReference '{0}' references unknown TX key '{1}'", route.WindowReference, route.TxKey);
+                    return false;
+                }
+            }
+
+            if (preset.AudioMode.HasValue)
+            {
+                if (preset.AudioMode.Value == NhdMultiviewAudioMode.NoChange
+                    || preset.AudioMode.Value == NhdMultiviewAudioMode.Unknown)
+                {
+                    return true;
+                }
+
+                if (preset.AudioMode.Value == NhdMultiviewAudioMode.Window)
+                {
+                    if (!preset.AudioWindowReference.HasValue || preset.AudioWindowReference.Value <= 0)
+                    {
+                        validationError = "AudioMode 'Window' requires AudioWindowReference >= 1";
+                        return false;
+                    }
+
+                    if (preset.AudioWindowReference.Value > rxEndpoint.MaxStreamCount)
+                    {
+                        validationError = string.Format(
+                            CultureInfo.InvariantCulture,
+                            "AudioWindowReference '{0}' exceeds endpoint MaxStreamCount '{1}'",
+                            preset.AudioWindowReference.Value,
+                            rxEndpoint.MaxStreamCount);
+                        return false;
+                    }
+                }
+                else if (preset.AudioMode.Value == NhdMultiviewAudioMode.Separate)
+                {
+                    if (string.IsNullOrWhiteSpace(preset.AudioTxKey))
+                    {
+                        validationError = "AudioMode 'Separate' requires AudioTxKey";
+                        return false;
+                    }
+
+                    var audioTx = DeviceManager.GetDeviceForKey(preset.AudioTxKey.Trim()) as NhdBaseDevice;
+                    if (audioTx == null || !audioTx.IsTransmitter)
+                    {
+                        validationError = string.Format(CultureInfo.InvariantCulture, "AudioTxKey '{0}' is not a known transmitter", preset.AudioTxKey);
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        private bool TryApplyControllerLayoutWithWindowRoutes(
+            IKeyed source,
+            NhdBaseDevice rxEndpoint,
+            string layoutName,
+            IReadOnlyDictionary<int, string> sourceReferencesByWindow)
+        {
+            if (!TryActivateMultiviewLayout(source, rxEndpoint, layoutName))
+                return false;
+
+            var tileCount = 0;
+            if (!NhdBaseDevice.TryInferPresetLayoutShape(layoutName, out tileCount, out _))
+            {
+                tileCount = rxEndpoint.ActiveTileCount;
+            }
+
+            if (tileCount <= 0)
+            {
+                tileCount = sourceReferencesByWindow?.Count > 0
+                    ? sourceReferencesByWindow.Keys.Max()
+                    : 0;
+            }
+
+            if (tileCount <= 0)
+                return true;
+
+            var allSent = true;
+            for (var tile = 1; tile <= tileCount; tile++)
+            {
+                var txReference = "null";
+                if (sourceReferencesByWindow != null
+                    && sourceReferencesByWindow.TryGetValue(tile, out var mappedSource)
+                    && !string.IsNullOrWhiteSpace(mappedSource))
+                {
+                    txReference = mappedSource.Trim();
+                }
+
+                var routeCommand = BuildPresetTileRouteCommand(txReference, rxEndpoint.ApiEndpointReference, layoutName, tile);
+                if (!NhdApiCommandSender.TrySend(source, routeCommand))
+                {
+                    allSent = false;
+                }
+            }
+
+            return allSent;
+        }
+
+        private bool TryApplyPresetAudioSelection(
+            IKeyed source,
+            NhdBaseDevice rxEndpoint,
+            NhdMultiviewPresetProperties preset,
+            IReadOnlyDictionary<int, string> sourceReferencesByWindow,
+            IReadOnlyDictionary<int, NhdBaseDevice> txByWindow)
+        {
+            if (source == null || rxEndpoint == null || preset == null || !preset.AudioMode.HasValue)
+                return true;
+
+            if (preset.AudioMode.Value == NhdMultiviewAudioMode.NoChange
+                || preset.AudioMode.Value == NhdMultiviewAudioMode.Unknown)
+            {
+                return true;
+            }
+
+            if (preset.AudioMode.Value == NhdMultiviewAudioMode.Window)
+            {
+                var audioWindow = preset.AudioWindowReference.Value;
+                rxEndpoint.SetActiveMultiviewAudioWindow(audioWindow);
+
+                string windowSourceRef = null;
+                if (sourceReferencesByWindow != null
+                    && sourceReferencesByWindow.TryGetValue(audioWindow, out var mappedWindowSource)
+                    && !string.IsNullOrWhiteSpace(mappedWindowSource))
+                {
+                    windowSourceRef = mappedWindowSource.Trim();
+                }
+                else if (rxEndpoint.TryGetActiveMultiviewTile(audioWindow, out var tile)
+                    && tile != null
+                    && !string.IsNullOrWhiteSpace(tile.SourceReference))
+                {
+                    windowSourceRef = tile.SourceReference.Trim();
+                }
+
+                if (!string.IsNullOrWhiteSpace(windowSourceRef))
+                {
+                    var audioCommand = string.Format(
+                        CultureInfo.InvariantCulture,
+                        "mview set audio {0} separate {1}",
+                        rxEndpoint.ApiEndpointReference,
+                        windowSourceRef);
+
+                    if (!NhdApiCommandSender.TrySend(source, audioCommand))
+                        return false;
+
+                    rxEndpoint.SetActiveMultiviewAudioSeparateSource(windowSourceRef);
+                }
+
+                return true;
+            }
+
+            if (preset.AudioMode.Value == NhdMultiviewAudioMode.Separate)
+            {
+                var audioTx = DeviceManager.GetDeviceForKey(preset.AudioTxKey.Trim()) as NhdBaseDevice;
+                if (audioTx == null || !audioTx.IsTransmitter)
+                    return false;
+
+                var audioSourceRef = audioTx.ApiEndpointReference;
+                var command = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "mview set audio {0} separate {1}",
+                    rxEndpoint.ApiEndpointReference,
+                    audioSourceRef);
+
+                if (!NhdApiCommandSender.TrySend(source, command))
+                    return false;
+
+                rxEndpoint.SetActiveMultiviewAudioSeparateSource(audioSourceRef);
+                return true;
+            }
+
+            return true;
+        }
+
+        private static bool TryValidateCustomLayoutAudioMetadata(
+            NhdBaseDevice rxEndpoint,
+            NhdCustomMultiviewLayoutProperties layout,
+            out string validationError)
+        {
+            validationError = null;
+
+            if (rxEndpoint == null || layout == null)
+            {
+                validationError = "endpoint/layout is null";
+                return false;
+            }
+
+            if (!layout.AudioMode.HasValue || layout.AudioMode.Value == NhdMultiviewAudioMode.Unknown)
+                return true;
+
+            if (layout.AudioMode.Value == NhdMultiviewAudioMode.Window)
+            {
+                if (!layout.AudioWindowReference.HasValue || layout.AudioWindowReference.Value <= 0)
+                {
+                    validationError = "AudioMode 'Window' requires AudioWindowReference >= 1";
+                    return false;
+                }
+
+                if (layout.AudioWindowReference.Value > rxEndpoint.MaxStreamCount)
+                {
+                    validationError = string.Format(
+                        CultureInfo.InvariantCulture,
+                        "AudioWindowReference '{0}' exceeds endpoint MaxStreamCount '{1}'",
+                        layout.AudioWindowReference.Value,
+                        rxEndpoint.MaxStreamCount);
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool TryApplyCustomLayoutAudioMetadata(
+            IKeyed source,
+            NhdBaseDevice rxEndpoint,
+            NhdCustomMultiviewLayoutProperties layout)
+        {
+            if (source == null || rxEndpoint == null || layout == null)
+                return false;
+
+            if (!layout.AudioMode.HasValue || layout.AudioMode.Value == NhdMultiviewAudioMode.Unknown)
+            {
+                _pendingCustomWindowAudioApplies.Remove(rxEndpoint.Key);
+                return true;
+            }
+
+            if (layout.AudioMode.Value == NhdMultiviewAudioMode.Window)
+            {
+                var windowReference = layout.AudioWindowReference.Value;
+                rxEndpoint.SetActiveMultiviewAudioWindow(windowReference);
+                _pendingCustomWindowAudioApplies[rxEndpoint.Key] = windowReference;
+
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{SourceKey}] Applied custom layout audio metadata endpoint='{1}', mode='window', window={2}",
+                    source,
+                    source.Key,
+                    rxEndpoint.Key,
+                    windowReference);
+
+                TryDispatchPendingCustomWindowAudioForEndpoint(rxEndpoint);
+                return true;
+            }
+
+            if (layout.AudioMode.Value == NhdMultiviewAudioMode.Separate)
+            {
+                _pendingCustomWindowAudioApplies.Remove(rxEndpoint.Key);
+
+                var separateSource = string.IsNullOrWhiteSpace(rxEndpoint.ActiveMultiviewAudioSeparateSourceReference)
+                    ? rxEndpoint.ActiveMultiviewAudioSourceReference
+                    : rxEndpoint.ActiveMultiviewAudioSeparateSourceReference;
+
+                rxEndpoint.SetActiveMultiviewAudioSeparateSource(separateSource);
+
+                if (string.IsNullOrWhiteSpace(separateSource))
+                {
+                    Debug.LogMessage(
+                        Serilog.Events.LogEventLevel.Warning,
+                        "$$$$$$$$$$ [{SourceKey}] Custom layout audio mode 'separate' selected for endpoint '{1}' but no source is available yet",
+                        source,
+                        source.Key,
+                        rxEndpoint.Key);
+                    return true;
+                }
+
+                var command = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "mview set audio {0} separate {1}",
+                    rxEndpoint.ApiEndpointReference,
+                    separateSource);
+
+                if (!NhdApiCommandSender.TrySend(source, command))
+                {
+                    Debug.LogError("[{0}] Failed sending custom layout separate-audio command endpoint='{1}', source='{2}'", source.Key, rxEndpoint.Key, separateSource);
+                    return false;
+                }
+
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{SourceKey}] Applied custom layout audio metadata endpoint='{1}', mode='separate', source='{2}'",
+                    source,
+                    source.Key,
+                    rxEndpoint.Key,
+                    separateSource);
+
+                return true;
+            }
+
+            _pendingCustomWindowAudioApplies.Remove(rxEndpoint.Key);
+            return true;
+        }
+
+        private void TryDispatchPendingCustomWindowAudioForEndpoint(NhdBaseDevice rxEndpoint)
+        {
+            if (rxEndpoint == null)
+                return;
+
+            if (!_pendingCustomWindowAudioApplies.TryGetValue(rxEndpoint.Key, out var windowReference))
+                return;
+
+            if (!rxEndpoint.TryGetActiveMultiviewTile(windowReference, out var tile)
+                || tile == null
+                || string.IsNullOrWhiteSpace(tile.SourceReference))
+            {
+                return;
+            }
+
+            var sourceReference = tile.SourceReference.Trim();
+            var command = string.Format(
+                CultureInfo.InvariantCulture,
+                "mview set audio {0} separate {1}",
+                rxEndpoint.ApiEndpointReference,
+                sourceReference);
+
+            if (!NhdApiCommandSender.TrySend(_ctl, command))
+                return;
+
+            rxEndpoint.SetActiveMultiviewAudioSeparateSource(sourceReference);
+            _pendingCustomWindowAudioApplies.Remove(rxEndpoint.Key);
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ [{SourceKey}] Applied deferred custom-window audio endpoint='{1}', window={2}, source='{3}'",
+                _ctl,
+                _ctl.Key,
+                rxEndpoint.Key,
+                windowReference,
+                sourceReference);
+        }
+
+        private static int ScaleCoordinate(int value, int sourceSpan, int targetSpan)
+        {
+            if (sourceSpan <= 0 || targetSpan <= 0)
+                return 0;
+
+            if (value <= 0)
+                return 0;
+
+            var scaled = (double)value * targetSpan / sourceSpan;
+            return Math.Max(0, (int)Math.Round(scaled, MidpointRounding.AwayFromZero));
+        }
+
+        private static int ScaleLength(int value, int sourceSpan, int targetSpan)
+        {
+            if (sourceSpan <= 0 || targetSpan <= 0)
+                return 1;
+
+            if (value <= 0)
+                return 1;
+
+            var scaled = (double)value * targetSpan / sourceSpan;
+            return Math.Max(1, (int)Math.Round(scaled, MidpointRounding.AwayFromZero));
+        }
+
         private void RequestMultiviewState(NhdBaseDevice endpoint, IKeyed source = null, bool force = false)
         {
             if (endpoint == null || !endpoint.SupportsMultiview)
@@ -2022,6 +3099,18 @@ namespace PepperDash.Essentials.Plugin.Comms
             var sender = source ?? _ctl;
             Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ Requesting multiview state for endpoint '{EndpointKey}'", sender, endpoint.Key);
             NhdApiCommandSender.TrySend(sender, $"mview get {endpoint.ApiEndpointReference}");
+        }
+
+        private void RequestDeviceStatus(IKeyed source = null, bool force = false)
+        {
+            if (!force && _lastDeviceStatusRefreshUtc.HasValue && DateTime.UtcNow - _lastDeviceStatusRefreshUtc.Value < DeviceStatusRefreshThrottle)
+                return;
+
+            _lastDeviceStatusRefreshUtc = DateTime.UtcNow;
+
+            var sender = source ?? _ctl;
+            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ Requesting device status", sender);
+            NhdApiCommandSender.TrySend(sender, "config get device status");
         }
 
         private void RequestMatrixState(IKeyed source = null, bool force = false)
@@ -2087,8 +3176,9 @@ namespace PepperDash.Essentials.Plugin.Comms
                 TryRestoreLayoutAfterProbe(endpoint);
                 Debug.LogMessage(
                     Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{0}] Multiview layout probe complete endpoint='{1}', attempted={2}, learned={3}",
+                    "$$$$$$$$$$ [{SourceKey}] Multiview layout probe complete endpoint='{1}', attempted={2}, learned={3}",
                     _ctl,
+                    _ctl.Key,
                     endpoint.Key,
                     probe.AttemptedCount,
                     probe.LearnedCount);
@@ -2100,8 +3190,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Probing layout endpoint='{1}', layout='{2}', remaining={3}",
+                "$$$$$$$$$$ [{SourceKey}] Probing layout endpoint='{1}', layout='{2}', remaining={3}",
                 _ctl,
+                _ctl.Key,
                 endpoint.Key,
                 nextLayout,
                 probe.RemainingLayouts.Count);
@@ -2122,8 +3213,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Fullscreen return available endpoint='{1}', returnLayout='{2}'",
+                "$$$$$$$$$$ [{SourceKey}] Fullscreen return available endpoint='{1}', returnLayout='{2}'",
                 _ctl,
+                _ctl.Key,
                 endpoint.Key,
                 previousLayoutName);
         }
@@ -2141,8 +3233,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Fullscreen return cleared endpoint='{1}', reason='{2}'",
+                "$$$$$$$$$$ [{SourceKey}] Fullscreen return cleared endpoint='{1}', reason='{2}'",
                 _ctl,
+                _ctl.Key,
                 endpoint.Key,
                 reason ?? "unspecified");
         }
@@ -2175,8 +3268,9 @@ namespace PepperDash.Essentials.Plugin.Comms
                 _startupProbeCompleted.Add(endpoint.Key);
                 Debug.LogMessage(
                     Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{0}] Startup multiview layout probe started for endpoint '{1}'",
+                    "$$$$$$$$$$ [{SourceKey}] Startup multiview layout probe started for endpoint '{1}'",
                     _ctl,
+                    _ctl.Key,
                     endpoint.Key);
             }
         }
@@ -2226,8 +3320,9 @@ namespace PepperDash.Essentials.Plugin.Comms
             state.MatchedOriginalLayoutName = capturedLayout;
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Matched pre-probe receiver state endpoint='{1}' to layout='{2}'",
+                "$$$$$$$$$$ [{SourceKey}] Matched pre-probe receiver state endpoint='{1}' to layout='{2}'",
                 _ctl,
+                _ctl.Key,
                 endpoint.Key,
                 capturedLayout);
         }
@@ -2250,8 +3345,9 @@ namespace PepperDash.Essentials.Plugin.Comms
             {
                 Debug.LogMessage(
                     Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{0}] Probe complete for endpoint='{1}' with no known pre-probe layout to restore",
+                    "$$$$$$$$$$ [{SourceKey}] Probe complete for endpoint='{1}' with no known pre-probe layout to restore",
                     _ctl,
+                    _ctl.Key,
                     endpoint.Key);
                 return;
             }
@@ -2263,8 +3359,9 @@ namespace PepperDash.Essentials.Plugin.Comms
             {
                 Debug.LogMessage(
                     Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{0}] Restoring pre-probe layout endpoint='{1}', layout='{2}'",
+                    "$$$$$$$$$$ [{SourceKey}] Restoring pre-probe layout endpoint='{1}', layout='{2}'",
                     _ctl,
+                    _ctl.Key,
                     endpoint.Key,
                     restoreLayout);
             }
@@ -2300,7 +3397,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             _lastMsceneListRequestUtc[endpoint.Key] = DateTime.UtcNow;
 
             var sender = source ?? _ctl;
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Requesting preset layout list for endpoint '{1}'", sender, endpoint.Key);
+            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Requesting preset layout list for endpoint '{1}'", sender, sender.Key, endpoint.Key);
             NhdApiCommandSender.TrySend(sender, $"mscene get {endpoint.ApiEndpointReference}");
         }
 
@@ -2320,7 +3417,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (DateTime.UtcNow - pending.QueuedUtc > PendingTileRouteExpiry)
             {
                 _pendingTileRoutes.Remove(rxEndpoint.Key);
-                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Dropping stale pending multiview tile route for endpoint '{1}'", _ctl, rxEndpoint.Key);
+                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Dropping stale pending multiview tile route for endpoint '{1}'", _ctl, _ctl.Key, rxEndpoint.Key);
                 return;
             }
 
@@ -2332,8 +3429,9 @@ namespace PepperDash.Essentials.Plugin.Comms
                 _pendingTileRoutes.Remove(rxEndpoint.Key);
                 Debug.LogMessage(
                     Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{0}] Rejected queued multiview tile route for endpoint '{1}': requested tile={2}, activeTiles={3}, mode='{4}'",
+                    "$$$$$$$$$$ [{SourceKey}] Rejected queued multiview tile route for endpoint '{1}': requested tile={2}, activeTiles={3}, mode='{4}'",
                     _ctl,
+                    _ctl.Key,
                     rxEndpoint.Key,
                     pending.TileReference,
                     rxEndpoint.ActiveTileCount,
@@ -2363,8 +3461,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Verified queued multiview tile route; sending command layout='{1}', tile={2}, tx='{3}', rx='{4}', mode='{5}', activeTiles={6}",
+                "$$$$$$$$$$ [{SourceKey}] Verified queued multiview tile route; sending command layout='{Layout}', tile={Tile}, tx='{TxRef}', rx='{RxRef}', mode='{Mode}', activeTiles={ActiveTiles}",
                 _ctl,
+                _ctl.Key,
                 pending.LayoutName,
                 pending.TileReference,
                 txEndpoint.ApiEndpointReference,
@@ -2374,8 +3473,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Multiview tile {1} currently mapped to '{2}' on endpoint '{3}'",
+                "$$$$$$$$$$ [{SourceKey}] Multiview tile {Tile} currently mapped to '{MappedSource}' on endpoint '{EndpointKey}'",
                 _ctl,
+                _ctl.Key,
                 pending.TileReference,
                 existingSource ?? "null",
                 rxEndpoint.Key);
@@ -2388,6 +3488,133 @@ namespace PepperDash.Essentials.Plugin.Comms
                     ClearFullscreenReturnState(rxEndpoint, "tile route changed");
                 }
             }
+        }
+
+        private void TryDispatchPendingFullscreenRequestForEndpoint(NhdBaseDevice rxEndpoint)
+        {
+            if (rxEndpoint == null)
+                return;
+
+            if (!_pendingFullscreenRequests.TryGetValue(rxEndpoint.Key, out var pending))
+                return;
+
+            if (DateTime.UtcNow - pending.QueuedUtc > PendingFullscreenRequestExpiry)
+            {
+                _pendingFullscreenRequests.Remove(rxEndpoint.Key);
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{SourceKey}] Dropping stale pending fullscreen request for endpoint '{1}'",
+                    _ctl,
+                    _ctl.Key,
+                    rxEndpoint.Key);
+                return;
+            }
+
+            if (!rxEndpoint.IsMultiviewStateFresh(MultiviewStateFreshness))
+                return;
+
+            if (rxEndpoint.ActiveTileCount <= 1)
+            {
+                _pendingFullscreenRequests.Remove(rxEndpoint.Key);
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{SourceKey}] Rejected queued fullscreen request for endpoint '{1}': activeTiles={2}",
+                    _ctl,
+                    _ctl.Key,
+                    rxEndpoint.Key,
+                    rxEndpoint.ActiveTileCount);
+                return;
+            }
+
+            if (pending.SourceTileReference > rxEndpoint.ActiveTileCount)
+            {
+                _pendingFullscreenRequests.Remove(rxEndpoint.Key);
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{SourceKey}] Rejected queued fullscreen request for endpoint '{1}': requested sourceTile={2}, activeTiles={3}",
+                    _ctl,
+                    _ctl.Key,
+                    rxEndpoint.Key,
+                    pending.SourceTileReference,
+                    rxEndpoint.ActiveTileCount);
+                return;
+            }
+
+            var previousLayout = rxEndpoint.ActivePresetMultiviewLayoutName;
+            if (string.IsNullOrWhiteSpace(previousLayout))
+            {
+                _pendingFullscreenRequests.Remove(rxEndpoint.Key);
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{SourceKey}] Rejected queued fullscreen request for endpoint '{1}': active layout is unknown",
+                    _ctl,
+                    _ctl.Key,
+                    rxEndpoint.Key);
+                return;
+            }
+
+            if (!rxEndpoint.TryGetActiveMultiviewTile(pending.SourceTileReference, out var sourceTile) || string.IsNullOrWhiteSpace(sourceTile.SourceReference))
+            {
+                _pendingFullscreenRequests.Remove(rxEndpoint.Key);
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{SourceKey}] Rejected queued fullscreen request for endpoint '{1}': source for tile {2} is unknown",
+                    _ctl,
+                    _ctl.Key,
+                    rxEndpoint.Key,
+                    pending.SourceTileReference);
+                return;
+            }
+
+            const string fullscreenLayout = "1-1";
+            if (rxEndpoint.AvailablePresetMultiviewLayouts.Count > 0 && !rxEndpoint.IsKnownPresetMultiviewLayout(fullscreenLayout))
+            {
+                _pendingFullscreenRequests.Remove(rxEndpoint.Key);
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{SourceKey}] Rejected queued fullscreen request for endpoint '{1}': fullscreen layout '{2}' is unavailable",
+                    _ctl,
+                    _ctl.Key,
+                    rxEndpoint.Key,
+                    fullscreenLayout);
+                return;
+            }
+
+            ClearFullscreenReturnState(rxEndpoint, "new fullscreen requested");
+
+            _pendingFullscreen[rxEndpoint.Key] = new PendingMultiviewFullscreen
+            {
+                PreviousLayoutName = previousLayout,
+                SourceTileReference = pending.SourceTileReference,
+                SourceReference = sourceTile.SourceReference,
+                QueuedUtc = DateTime.UtcNow,
+            };
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ [{SourceKey}] Dispatching queued fullscreen request endpoint='{1}', fromLayout='{2}', sourceTile={3}, sourceRef='{4}', requestedBy='{5}'",
+                _ctl,
+                _ctl.Key,
+                rxEndpoint.Key,
+                previousLayout,
+                pending.SourceTileReference,
+                sourceTile.SourceReference,
+                pending.RequestedByKey ?? "unknown");
+
+            var sent = NhdApiCommandSender.TrySend(_ctl, $"mscene active {rxEndpoint.ApiEndpointReference} {fullscreenLayout}");
+            if (sent)
+            {
+                _pendingFullscreenRequests.Remove(rxEndpoint.Key);
+                return;
+            }
+
+            _pendingFullscreen.Remove(rxEndpoint.Key);
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ [{SourceKey}] Failed to dispatch queued fullscreen request for endpoint '{1}'",
+                _ctl,
+                _ctl.Key,
+                rxEndpoint.Key);
         }
 
         private bool ShouldBypassFullscreenReturnClearForRoute(NhdBaseDevice rxEndpoint, string txReference, string layoutName, int tileReference)
@@ -2415,8 +3642,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{0}] Keeping fullscreen return available for endpoint '{1}' because route matches recent fullscreen transition",
+                "$$$$$$$$$$ [{SourceKey}] Keeping fullscreen return available for endpoint '{1}' because route matches recent fullscreen transition",
                 _ctl,
+                _ctl.Key,
                 rxEndpoint.Key);
 
             return true;
@@ -2432,7 +3660,26 @@ namespace PepperDash.Essentials.Plugin.Comms
             foreach (var key in expiredKeys)
             {
                 _pendingTileRoutes.Remove(key);
-                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{0}] Expired pending multiview tile route for endpoint '{1}'", _ctl, key);
+                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Expired pending multiview tile route for endpoint '{1}'", _ctl, _ctl.Key, key);
+            }
+        }
+
+        private void ExpirePendingFullscreenRequests()
+        {
+            var expiredKeys = _pendingFullscreenRequests
+                .Where(kvp => DateTime.UtcNow - kvp.Value.QueuedUtc > PendingFullscreenRequestExpiry)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var key in expiredKeys)
+            {
+                _pendingFullscreenRequests.Remove(key);
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Information,
+                    "$$$$$$$$$$ [{SourceKey}] Expired pending fullscreen request for endpoint '{1}'",
+                    _ctl,
+                    _ctl.Key,
+                    key);
             }
         }
 

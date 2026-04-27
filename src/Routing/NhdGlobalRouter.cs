@@ -166,7 +166,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         ExecuteSwitch(inputSlot, output, type);
     }
 
-    public bool ActivateMultiviewLayout(string outputSlotKey, string layoutName)
+    public bool ApplyControllerMVLayout(string outputSlotKey, string layoutName)
     {
         if (!OutputSlots.TryGetValue(outputSlotKey, out var outputSlot))
         {
@@ -196,6 +196,135 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         return ctl.SessionManager.TryActivateMultiviewLayout(this, output.Device, layoutName);
     }
 
+    public bool ActivateMultiviewLayout(string outputSlotKey, string layoutName)
+    {
+        return ApplyControllerMVLayout(outputSlotKey, layoutName);
+    }
+
+    public bool ApplyCustomMVLayout(string outputSlotKey, string layoutKey)
+    {
+        if (!OutputSlots.TryGetValue(outputSlotKey, out var outputSlot))
+        {
+            this.LogError("Unable to find multiview output slot with key {0}", outputSlotKey);
+            return false;
+        }
+
+        if (outputSlot is not NhdMatrixOutput output)
+        {
+            this.LogError("Output slot with key {0} is not NhdMatrixOutput", outputSlotKey);
+            return false;
+        }
+
+        if (!output.Device.SupportsMultiview)
+        {
+            this.LogError("Endpoint '{key}' does not support multiview custom layout geometry", output.Device.Key);
+            return false;
+        }
+
+        var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
+        if (ctl?.SessionManager == null)
+        {
+            this.LogError("NHD-CTL session manager is not available for custom multiview geometry apply");
+            return false;
+        }
+
+        return ctl.SessionManager.TryApplyCustomMVLayout(this, output.Device, layoutKey);
+    }
+
+    public bool ApplyCustomMVLayoutWithContent(
+        string outputSlotKey,
+        string layoutKey,
+        IDictionary<int, string> inputSlotKeysByWindow)
+    {
+        if (!OutputSlots.TryGetValue(outputSlotKey, out var outputSlot))
+        {
+            this.LogError("Unable to find multiview output slot with key {0}", outputSlotKey);
+            return false;
+        }
+
+        if (outputSlot is not NhdMatrixOutput output)
+        {
+            this.LogError("Output slot with key {0} is not NhdMatrixOutput", outputSlotKey);
+            return false;
+        }
+
+        if (!output.Device.SupportsMultiview)
+        {
+            this.LogError("Endpoint '{key}' does not support multiview custom layout content apply", output.Device.Key);
+            return false;
+        }
+
+        var sourceReferencesByWindow = new Dictionary<int, string>();
+        foreach (var kvp in inputSlotKeysByWindow ?? new Dictionary<int, string>())
+        {
+            if (kvp.Key <= 0)
+            {
+                this.LogError("Invalid window reference '{windowRef}' in custom layout content map", kvp.Key);
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(kvp.Value))
+                continue;
+
+            if (!InputSlots.TryGetValue(kvp.Value, out var inputSlot))
+            {
+                this.LogError("Unable to find multiview input slot with key {0}", kvp.Value);
+                return false;
+            }
+
+            if (inputSlot is not NhdMatrixInput input)
+            {
+                this.LogError("Input slot with key {0} is not NhdMatrixInput", kvp.Value);
+                return false;
+            }
+
+            sourceReferencesByWindow[kvp.Key] = input.Device.ApiEndpointReference;
+        }
+
+        var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
+        if (ctl?.SessionManager == null)
+        {
+            this.LogError("NHD-CTL session manager is not available for custom multiview content apply");
+            return false;
+        }
+
+        return ctl.SessionManager.TryApplyCustomMVLayoutWithSources(
+            this,
+            output.Device,
+            layoutKey,
+            sourceReferencesByWindow);
+    }
+
+    public bool ApplyMVPreset(string outputSlotKey, string presetKey)
+    {
+        if (!OutputSlots.TryGetValue(outputSlotKey, out var outputSlot))
+        {
+            this.LogError("Unable to find multiview output slot with key {0}", outputSlotKey);
+            return false;
+        }
+
+        if (outputSlot is not NhdMatrixOutput output)
+        {
+            this.LogError("Output slot with key {0} is not NhdMatrixOutput", outputSlotKey);
+            return false;
+        }
+
+        if (!output.Device.SupportsMultiview)
+        {
+            this.LogError("Endpoint '{key}' does not support multiview preset apply", output.Device.Key);
+            return false;
+        }
+
+        var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
+        if (ctl?.SessionManager == null)
+        {
+            this.LogError("NHD-CTL session manager is not available for multiview preset apply");
+            return false;
+        }
+
+        return ctl.SessionManager.TryApplyMVPreset(this, output.Device, presetKey);
+    }
+
     public bool TryGetTrackedMultiviewLayout(string outputSlotKey, out string layoutName, out bool inferred)
     {
         layoutName = null;
@@ -222,6 +351,34 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         layoutName = output.Device.ActivePresetMultiviewLayoutName;
         inferred = output.Device.ActivePresetMultiviewLayoutInferred;
         return !string.IsNullOrWhiteSpace(layoutName);
+    }
+
+    public bool TryGetTrackedCustomMVLayout(string outputSlotKey, out string layoutKey, out bool inferred)
+    {
+        layoutKey = null;
+        inferred = false;
+
+        if (!OutputSlots.TryGetValue(outputSlotKey, out var outputSlot))
+        {
+            this.LogError("Unable to find multiview output slot with key {0}", outputSlotKey);
+            return false;
+        }
+
+        if (outputSlot is not NhdMatrixOutput output)
+        {
+            this.LogError("Output slot with key {0} is not NhdMatrixOutput", outputSlotKey);
+            return false;
+        }
+
+        if (!output.Device.SupportsMultiview)
+        {
+            this.LogError("Endpoint '{key}' does not support multiview layouts", output.Device.Key);
+            return false;
+        }
+
+        layoutKey = output.Device.ActiveCustomMultiviewLayoutKey;
+        inferred = output.Device.ActiveCustomMultiviewLayoutInferred;
+        return !string.IsNullOrWhiteSpace(layoutKey);
     }
 
     public bool ProbeAndLearnMultiviewLayouts(string outputSlotKey)
