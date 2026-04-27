@@ -13,6 +13,18 @@ using PepperDash.Essentials.Plugin.Routing;
 
 namespace PepperDash.Essentials.Plugin.Comms
 {
+    public sealed class NhdCtlSessionReadyStateChangedEventArgs : EventArgs
+    {
+        public NhdCtlSessionReadyStateChangedEventArgs(bool isReady, string reason)
+        {
+            IsReady = isReady;
+            Reason = reason;
+        }
+
+        public bool IsReady { get; private set; }
+        public string Reason { get; private set; }
+    }
+
     public class NhdCtlSessionManager
     {
         private static readonly Regex AliasLineRegex = new Regex(
@@ -32,7 +44,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex DeviceStatusKeyValueRegex = new Regex(
-            "^\"(?<key>[^\"]+)\"\\s*:\\s*\"(?<value>[^\"]*)\"\\s*,?$",
+            "^\"(?<key>[^\"]+)\"\\s*:\\s*(?:\"(?<value>[^\"]*)\"|(?<valueBare>[^,\\s\\}]+))\\s*,?$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex MviewInformationLineRegex = new Regex(
@@ -158,6 +170,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             public string Alias { get; set; }
             public string Name { get; set; }
             public string HdmiOutResolution { get; set; }
+            public bool? IsOnline { get; set; }
         }
 
         private readonly NhdCtlPro _ctl;
@@ -197,6 +210,7 @@ namespace PepperDash.Essentials.Plugin.Comms
         private bool _isParsingDeviceStatus;
         private int _deviceStatusBraceDepth;
         private PendingDeviceStatusEntry _pendingDeviceStatusEntry;
+        private readonly HashSet<string> _deviceStatusSeenEndpointKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private NhdBaseDevice _pendingMviewEndpoint;
         private NhdMultiStreamMode _pendingMviewMode;
         private readonly List<NhdMultiviewTileState> _pendingMviewTiles = new List<NhdMultiviewTileState>();
@@ -212,7 +226,27 @@ namespace PepperDash.Essentials.Plugin.Comms
             _ctl.Comms.TextReceived += HandleRawTextReceived;
         }
 
+        public event EventHandler<NhdCtlSessionReadyStateChangedEventArgs> SessionReadyStateChanged;
+
         public bool IsReadyForApiCommands => _isSessionReady;
+
+        public void ProbeSessionHealth(string reason = null)
+        {
+            SendSessionProbe(reason ?? "health probe");
+        }
+
+        public void HandleCtlTransportConnectionChanged(bool isConnected)
+        {
+            if (!isConnected)
+            {
+                ArmBootstrap("transport disconnected");
+                MarkAllEndpointsOffline("transport disconnected");
+                return;
+            }
+
+            // When transport returns, probe so readiness can be re-established and bootstrap replayed.
+            SendSessionProbe("transport connected");
+        }
 
         public void Start()
         {
@@ -1248,6 +1282,8 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             if (wasReady)
             {
+                OnSessionReadyStateChanged(false, reason);
+
                 Debug.LogMessage(
                     Serilog.Events.LogEventLevel.Information,
                     "$$$$$$$$$$ Session marked not-ready; reason='{Reason}'",
@@ -1260,6 +1296,11 @@ namespace PepperDash.Essentials.Plugin.Comms
         {
             var wasReady = _isSessionReady;
             _isSessionReady = true;
+
+            if (!wasReady)
+            {
+                OnSessionReadyStateChanged(true, reason);
+            }
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
@@ -1279,10 +1320,18 @@ namespace PepperDash.Essentials.Plugin.Comms
             }
         }
 
+        private void OnSessionReadyStateChanged(bool isReady, string reason)
+        {
+            var handler = SessionReadyStateChanged;
+            if (handler == null)
+                return;
+
+            handler(this, new NhdCtlSessionReadyStateChangedEventArgs(isReady, reason ?? "unspecified"));
+        }
+
         private void RunBootstrapQueries()
         {
             // Preferred endpoint references are aliases, but some replies still return hostnames.
-            _startupProbeCompleted.Clear();
             _lastMsceneListRequestUtc.Clear();
 
             Debug.LogMessage(
@@ -1685,17 +1734,25 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return true;
             }
 
+            var previousHostname = endpoint.Hostname;
+
             endpoint.SetResolvedHostname(hostname);
-            endpoint.SetOnlineState(true);
+
+            var hostnameChanged = !string.Equals(previousHostname, endpoint.Hostname, StringComparison.OrdinalIgnoreCase);
+
             Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Alias mapping resolved endpoint='{1}', Hostname='{2}', Alias='{3}'", _ctl, _ctl.Key, endpoint.Key, hostname, alias ?? "null");
 
             EnsureNotificationsSubscribed(hostname);
             EnsureNotificationsSubscribed(alias);
 
-            RequestMultiviewState(endpoint);
-            RequestMultiviewPresetLayouts(endpoint);
-            RequestMatrixState();
-            TryStartStartupProbeIfReady(endpoint);
+            // Alias discovery should not be treated as an online-state signal.
+            if (hostnameChanged)
+            {
+                RequestMultiviewState(endpoint);
+                RequestMultiviewPresetLayouts(endpoint);
+                RequestMatrixState();
+                TryStartStartupProbeIfReady(endpoint);
+            }
 
             return true;
         }
@@ -1932,6 +1989,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 _isParsingDeviceStatus = true;
                 _deviceStatusBraceDepth = 0;
                 _pendingDeviceStatusEntry = null;
+                _deviceStatusSeenEndpointKeys.Clear();
                 return true;
             }
 
@@ -1970,7 +2028,9 @@ namespace PepperDash.Essentials.Plugin.Comms
                 TryApplyDeviceStatusAttribute(
                     _pendingDeviceStatusEntry,
                     keyValueMatch.Groups["key"].Value,
-                    keyValueMatch.Groups["value"].Value);
+                    keyValueMatch.Groups["value"].Success
+                        ? keyValueMatch.Groups["value"].Value
+                        : keyValueMatch.Groups["valueBare"].Value);
             }
 
             var closeCount = CountCharacter(trimmed, '}');
@@ -1990,9 +2050,15 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             if (_deviceStatusBraceDepth <= 0 && closeCount > 0)
             {
+                foreach (var endpoint in GetEndpoints().Where(e => !_deviceStatusSeenEndpointKeys.Contains(e.Key)))
+                {
+                    endpoint.SetOnlineState(false);
+                }
+
                 _isParsingDeviceStatus = false;
                 _deviceStatusBraceDepth = 0;
                 _pendingDeviceStatusEntry = null;
+                _deviceStatusSeenEndpointKeys.Clear();
             }
 
             return true;
@@ -2034,7 +2100,55 @@ namespace PepperDash.Essentials.Plugin.Comms
                 case "hdmi out resolution":
                     entry.HdmiOutResolution = normalizedValue;
                     break;
+
+                case "status":
+                case "state":
+                case "online":
+                case "online status":
+                case "onlinestatus":
+                    if (TryParseDeviceOnlineState(normalizedValue, out var isOnline))
+                    {
+                        entry.IsOnline = isOnline;
+                    }
+                    break;
             }
+        }
+
+        private static bool TryParseDeviceOnlineState(string token, out bool isOnline)
+        {
+            isOnline = false;
+            if (string.IsNullOrWhiteSpace(token))
+                return false;
+
+            var value = token.Trim();
+
+            if (value.Equals("online", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("on", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("connected", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("present", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("up", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("active", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || value == "1")
+            {
+                isOnline = true;
+                return true;
+            }
+
+            if (value.Equals("offline", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("off", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("disconnected", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("absent", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("down", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("inactive", StringComparison.OrdinalIgnoreCase)
+                || value.Equals("false", StringComparison.OrdinalIgnoreCase)
+                || value == "0")
+            {
+                isOnline = false;
+                return true;
+            }
+
+            return false;
         }
 
         private void FinalizePendingDeviceStatusEntry()
@@ -2054,18 +2168,22 @@ namespace PepperDash.Essentials.Plugin.Comms
                 endpoint = ResolveEndpoint(_pendingDeviceStatusEntry.Name);
             }
 
-            if (endpoint == null || endpoint.IsTransmitter)
+            if (endpoint == null)
                 return;
+
+            _deviceStatusSeenEndpointKeys.Add(endpoint.Key);
 
             if (!string.IsNullOrWhiteSpace(_pendingDeviceStatusEntry.Name))
             {
                 endpoint.SetResolvedHostname(_pendingDeviceStatusEntry.Name);
             }
 
-            if (!string.IsNullOrWhiteSpace(_pendingDeviceStatusEntry.HdmiOutResolution))
+            if (!endpoint.IsTransmitter && !string.IsNullOrWhiteSpace(_pendingDeviceStatusEntry.HdmiOutResolution))
             {
                 endpoint.SetHdmiOutResolution(_pendingDeviceStatusEntry.HdmiOutResolution);
             }
+
+            endpoint.SetOnlineState(_pendingDeviceStatusEntry.IsOnline ?? true);
         }
 
         private static bool TryParseVideoNotifyState(string token, out bool syncDetected)
@@ -2128,24 +2246,12 @@ namespace PepperDash.Essentials.Plugin.Comms
                 }
 
                 listedEndpoints.Add(endpoint);
-                endpoint.SetOnlineState(true);
-                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Devicelist marked endpoint online: '{1}' (ref='{2}')", _ctl, _ctl.Key, endpoint.Key, reference);
-                RequestMultiviewState(endpoint);
-                RequestMultiviewPresetLayouts(endpoint);
-                RequestMatrixState();
-                TryStartStartupProbeIfReady(endpoint);
+                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Devicelist resolved endpoint: '{1}' (ref='{2}')", _ctl, _ctl.Key, endpoint.Key, reference);
             }
 
-            foreach (var endpoint in GetEndpoints().Where(e => !listedEndpoints.Contains(e)))
-            {
-                endpoint.SetOnlineState(false);
-                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Devicelist marked endpoint offline: '{1}'", _ctl, _ctl.Key, endpoint.Key);
-            }
-
-            if (listedEndpoints.Count > 0)
-            {
-                RequestDeviceStatus();
-            }
+            // Device presence is determined from endpoint notify and device-status parsing,
+            // because devicelist can include endpoints that are currently offline.
+            RequestDeviceStatus();
 
             return true;
         }
@@ -2309,9 +2415,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             var endpoint = ResolveEndpoint(tokens[0]);
             if (endpoint == null || !endpoint.SupportsMultiview)
                 return true;
-
-            // If the CTL is returning a preset list for this endpoint, it is online for API purposes.
-            endpoint.SetOnlineState(true);
 
             var layouts = layoutTokens
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -3688,6 +3791,22 @@ namespace PepperDash.Essentials.Plugin.Comms
             return DeviceManager.AllDevices
                 .OfType<NhdBaseDevice>()
                 .Where(d => d is not NhdCtlPro);
+        }
+
+        private void MarkAllEndpointsOffline(string reason)
+        {
+            var endpoints = GetEndpoints().ToList();
+            foreach (var endpoint in endpoints)
+            {
+                endpoint.SetOnlineState(false);
+            }
+
+            Debug.LogMessage(
+                Serilog.Events.LogEventLevel.Information,
+                "$$$$$$$$$$ Marked all endpoints offline; reason='{Reason}', endpointCount={EndpointCount}",
+                _ctl,
+                reason ?? "unspecified",
+                endpoints.Count);
         }
 
         private static NhdBaseDevice ResolveEndpoint(string reference)

@@ -1,4 +1,5 @@
 using PepperDash.Core;
+using PepperDash.Essentials.Core;
 using PepperDash.Essentials.Plugin.Comms;
 
 namespace PepperDash.Essentials.Plugin
@@ -15,6 +16,13 @@ namespace PepperDash.Essentials.Plugin
 		public string ApiUsername => string.IsNullOrWhiteSpace(Config?.ApiUsername) ? null : Config.ApiUsername.Trim();
 		public string ApiPassword => Config?.ApiPassword ?? string.Empty;
 		public bool EnableTelnetLoginAutomation => Config?.EnableTelnetLoginAutomation ?? false;
+
+		protected override bool AutoStartCommunicationMonitorInBase => false;
+
+		protected override StatusMonitorBase BuildCommunicationMonitor()
+		{
+			return new NhdCtlCommunicationMonitor(this, 10000, 30000);
+		}
 
 		public NhdCtlPro(string key, string name, NhdDeviceProperties config, IBasicCommunication comms)
 			: base(key, name, config, "NHD-CTL-PRO")
@@ -35,6 +43,8 @@ namespace PepperDash.Essentials.Plugin
 				SessionManager = new NhdCtlSessionManager(this);
 				SessionManager.Start();
 			}
+
+			CommunicationMonitor.Start();
 
 			return true;
 		}

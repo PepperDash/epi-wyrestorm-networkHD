@@ -21,8 +21,11 @@ namespace PepperDash.Essentials.Plugin
 		public bool Value { get; }
 	}
 
-	public abstract class NhdBaseDevice : EssentialsDevice, IRoutingWithFeedback
+	public abstract class NhdBaseDevice : EssentialsDevice, IRoutingWithFeedback, ICommunicationMonitor
 	{
+		private const long DefaultCommunicationWarningTimeMs = 10000;
+		private const long DefaultCommunicationErrorTimeMs = 30000;
+
 		private NhdMultiStreamMode _multiStreamMode = NhdMultiStreamMode.Tile;
 		private bool _online;
 		private bool _inputSyncDetected;
@@ -57,6 +60,7 @@ namespace PepperDash.Essentials.Plugin
 		}
 
 		protected NhdDeviceProperties Config { get; private set; }
+		public StatusMonitorBase CommunicationMonitor { get; protected set; }
 		public string ModelName { get; private set; }
 		public int DeviceId { get; private set; }
 		public string ConfiguredAlias => string.IsNullOrWhiteSpace(Config.Alias) ? null : Config.Alias.Trim();
@@ -123,6 +127,42 @@ namespace PepperDash.Essentials.Plugin
 		public event RouteChangedEventHandler RouteChanged;
 		public event EventHandler<NhdDeviceBoolStateChangedEventArgs> OnlineStateChanged;
 		public event EventHandler<NhdDeviceBoolStateChangedEventArgs> InputSyncStateChanged;
+
+		protected virtual bool AutoStartCommunicationMonitorInBase => true;
+
+		protected virtual StatusMonitorBase BuildCommunicationMonitor()
+		{
+			return new NhdEndpointCommunicationMonitor(this, DefaultCommunicationWarningTimeMs, DefaultCommunicationErrorTimeMs);
+		}
+
+		protected void EnsureCommunicationMonitor()
+		{
+			if (CommunicationMonitor != null)
+				return;
+
+			CommunicationMonitor = BuildCommunicationMonitor();
+		}
+
+		protected override bool CustomActivate()
+		{
+			var result = base.CustomActivate();
+			if (!result)
+				return false;
+
+			EnsureCommunicationMonitor();
+			if (AutoStartCommunicationMonitorInBase)
+			{
+				CommunicationMonitor?.Start();
+			}
+
+			return true;
+		}
+
+		public override bool Deactivate()
+		{
+			CommunicationMonitor?.Stop();
+			return base.Deactivate();
+		}
 
 		public void SetResolvedHostname(string hostname)
 		{
