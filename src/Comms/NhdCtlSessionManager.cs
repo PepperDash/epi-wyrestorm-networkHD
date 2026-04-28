@@ -99,6 +99,7 @@ namespace PepperDash.Essentials.Plugin.Comms
         private static readonly TimeSpan MultiviewStateFreshness = TimeSpan.FromSeconds(10);
         private static readonly TimeSpan MultiviewRefreshThrottle = TimeSpan.FromSeconds(2);
         private static readonly TimeSpan MatrixRefreshThrottle = TimeSpan.FromSeconds(2);
+        private static readonly TimeSpan MatrixPeriodicRefreshInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan MsceneListRefreshThrottle = TimeSpan.FromSeconds(10);
         private static readonly TimeSpan PendingTileRouteExpiry = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan PendingFullscreenRequestExpiry = TimeSpan.FromSeconds(30);
@@ -190,6 +191,7 @@ namespace PepperDash.Essentials.Plugin.Comms
         private readonly Dictionary<string, Timer> _pendingVideoLostDebounceTimers = new Dictionary<string, Timer>(StringComparer.OrdinalIgnoreCase);
         private readonly object _videoLostDebounceLock = new object();
         private readonly HashSet<string> _subscribedNotificationReferences = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private Timer _periodicMatrixRefreshTimer;
         private DateTime? _lastMatrixRefreshUtc;
         private DateTime? _lastSessionProbeUtc;
         private DateTime? _lastUserPromptHandledUtc;
@@ -248,10 +250,34 @@ namespace PepperDash.Essentials.Plugin.Comms
             SendSessionProbe("transport connected");
         }
 
-        public void Start()
+        public void StartSessionLifecycle()
         {
             ArmBootstrap("startup");
+            StartPeriodicMatrixRefresh();
             SendSessionProbe("startup");
+        }
+
+        public void StopSessionLifecycle()
+        {
+            _periodicMatrixRefreshTimer?.Dispose();
+            _periodicMatrixRefreshTimer = null;
+
+            _gather.LineReceived -= HandleLineReceived;
+
+            if (_ctl?.Comms != null)
+            {
+                _ctl.Comms.TextReceived -= HandleRawTextReceived;
+            }
+
+            lock (_videoLostDebounceLock)
+            {
+                foreach (var timer in _pendingVideoLostDebounceTimers.Values)
+                {
+                    timer?.Dispose();
+                }
+
+                _pendingVideoLostDebounceTimers.Clear();
+            }
         }
 
         public bool TryRouteMultiviewTile(IKeyed requestedBy, NhdBaseDevice txEndpoint, NhdBaseDevice rxEndpoint, string layoutName, int tileReference)
@@ -1251,6 +1277,31 @@ namespace PepperDash.Essentials.Plugin.Comms
             }
 
             _ctl.Comms.SendText("\r\n");
+        }
+
+        private void StartPeriodicMatrixRefresh()
+        {
+            _periodicMatrixRefreshTimer?.Dispose();
+            _periodicMatrixRefreshTimer = new Timer(
+                HandlePeriodicMatrixRefresh,
+                null,
+                MatrixPeriodicRefreshInterval,
+                MatrixPeriodicRefreshInterval);
+        }
+
+        private void HandlePeriodicMatrixRefresh(object state)
+        {
+            try
+            {
+                if (!_isSessionReady || _ctl?.Comms == null || !_ctl.Comms.IsConnected)
+                    return;
+
+                RequestMatrixState(_ctl);
+            }
+            catch
+            {
+                // Timer exceptions should not crash runtime threads.
+            }
         }
 
         private void SendPreReadyApiCommand(string command)

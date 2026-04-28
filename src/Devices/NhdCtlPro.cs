@@ -41,12 +41,19 @@ namespace PepperDash.Essentials.Plugin
 			if (Comms != null)
 			{
 				SessionManager = new NhdCtlSessionManager(this);
-				SessionManager.Start();
+				SessionManager.StartSessionLifecycle();
 			}
 
 			CommunicationMonitor.Start();
 
 			return true;
+		}
+
+		public override bool Deactivate()
+		{
+			SessionManager?.StopSessionLifecycle();
+			SessionManager = null;
+			return base.Deactivate();
 		}
 	}
 }
