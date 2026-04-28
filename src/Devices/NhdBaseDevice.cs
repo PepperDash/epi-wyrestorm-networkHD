@@ -207,7 +207,7 @@ namespace PepperDash.Essentials.Plugin
 				SetInputSyncState(false);
 			}
 
-			Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{DeviceKey}] Online state -> {1} (endpointRef='{2}')", this, Key, isOnline ? "ONLINE" : "OFFLINE", ApiEndpointReference);
+			Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "[{DeviceKey}] Online state -> {1} (endpointRef='{2}')", this, Key, isOnline ? "ONLINE" : "OFFLINE", ApiEndpointReference);
 			IsOnline.FireUpdate();
 			OnlineStateChanged?.Invoke(this, new NhdDeviceBoolStateChangedEventArgs(isOnline));
 		}

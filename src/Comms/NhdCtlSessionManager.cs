@@ -1161,7 +1161,7 @@ namespace PepperDash.Essentials.Plugin.Comms
 
                 Debug.LogMessage(
                     Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ Session marked not-ready; reason='{Reason}'",
+                    "Session marked not-ready; reason='{Reason}'",
                     _ctl,
                     reason ?? "unspecified");
             }
@@ -1179,7 +1179,7 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ Session ready; reason='{Reason}', bootstrapPending={BootstrapPending}",
+                "Session ready; reason='{Reason}', bootstrapPending={BootstrapPending}",
                 _ctl,
                 reason ?? "unspecified",
                 _bootstrapPending);
@@ -1211,7 +1211,7 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             Debug.LogMessage(
                 Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ Running CTL bootstrap queries",
+                "Running CTL bootstrap queries",
                 _ctl);
 
             NhdApiCommandSender.TrySend(_ctl, "config set session alias on");
@@ -2817,7 +2817,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 {
                     Debug.LogMessage(
                         Serilog.Events.LogEventLevel.Warning,
-                        "$$$$$$$$$$ [{SourceKey}] Custom layout audio mode 'separate' selected for endpoint '{1}' but no source is available yet",
+                        "[{SourceKey}] Custom layout audio mode 'separate' selected for endpoint '{1}' but no source is available yet",
                         source,
                         source.Key,
                         rxEndpoint.Key);
