@@ -77,6 +77,12 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
             return;
         }
 
+        if (!output.SupportsMatrixSwitching)
+        {
+            this.LogError("Output '{key}' does not support single-stream matrix routing. Use multiview APIs for multistream decoders.", output.Key);
+            return;
+        }
+
         if (inputSelector is not IRoutingInputSlot inputSlot)
         {
             this.LogError("Input selector is not IRoutingInputSlot");
@@ -132,6 +138,9 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         if (outputSlot is not NhdMatrixOutput output)
             return false;
 
+        if (!output.SupportsMatrixSwitching)
+            return false;
+
         IRoutingInputSlot inputSlot = null;
         if (!string.IsNullOrWhiteSpace(txEndpointKey))
         {
@@ -145,7 +154,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
 
     public void Route(string inputSlotKey, string outputSlotKey, eRoutingSignalType type)
     {
-        if (!InputSlots.TryGetValue(inputSlotKey, out var inputSlot))
+        if (!TryResolveInputSlot(inputSlotKey, out var inputSlot))
         {
             this.LogError("Unable to find input slot with key {0}", inputSlotKey);
             return;
@@ -163,7 +172,41 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
             return;
         }
 
+        if (!output.SupportsMatrixSwitching)
+        {
+            this.LogError("Output '{key}' does not support single-stream matrix routing. Use multiview APIs for multistream decoders.", output.Key);
+            return;
+        }
+
         ExecuteSwitch(inputSlot, output, type);
+    }
+
+    private bool TryResolveInputSlot(string inputSlotKey, out IRoutingInputSlot inputSlot)
+    {
+        inputSlot = null;
+
+        if (string.IsNullOrWhiteSpace(inputSlotKey))
+            return false;
+
+        if (InputSlots.TryGetValue(inputSlotKey, out inputSlot))
+            return true;
+
+        if (!IsClearRouteInputKey(inputSlotKey))
+            return false;
+
+        return InputSlots.TryGetValue("none", out inputSlot);
+    }
+
+    private static bool IsClearRouteInputKey(string inputSlotKey)
+    {
+        if (string.IsNullOrWhiteSpace(inputSlotKey))
+            return false;
+
+        var normalized = inputSlotKey.Trim();
+        return normalized.Equals("none", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("null", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("off", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals(RouteOff, StringComparison.OrdinalIgnoreCase);
     }
 
     public bool ApplyControllerMVLayout(string outputSlotKey, string layoutName)
@@ -566,6 +609,20 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
     {
         try
         {
+            var transmitters = DeviceManager
+                .AllDevices.OfType<NhdBaseDevice>()
+                .Where(d => d.IsTransmitter)
+                .ToList();
+
+            var receiverSlots = DeviceManager
+                .AllDevices.OfType<NhdBaseDevice>()
+                .Where(IsMatrixOutputSlotCandidate)
+                .ToList();
+
+            var matrixTieLineReceivers = receiverSlots
+                .Where(IsMatrixTieLineReceiver)
+                .ToList();
+
             InputSlots = DeviceManager
                 .AllDevices.OfType<NhdBaseDevice>()
                 .Where(d => d.IsTransmitter)
@@ -573,22 +630,23 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
                 .Cast<IRoutingInputSlot>()
                 .ToDictionary(i => i.Key, i => i);
 
-            var clearInput = new NhdMatrixClearInput();
-            InputSlots.Add(clearInput.Key, clearInput);
-
             this.LogDebug("Total inputs: {count}", InputSlots.Count);
 
-            OutputSlots = DeviceManager
-                .AllDevices.OfType<NhdBaseDevice>()
-                .Where(d => !d.IsTransmitter)
+            OutputSlots = receiverSlots
                 .Select(d => new NhdMatrixOutput(d))
                 .Cast<IRoutingOutputSlot>()
                 .ToDictionary(o => o.Key, o => o);
 
             this.LogDebug("Total outputs: {count}", OutputSlots.Count);
 
+            var clearSupportedSignals = OutputSlots.Values
+                .Aggregate((eRoutingSignalType)0, (current, output) => current | output.SupportedSignalTypes);
+
+            var clearInput = new NhdMatrixClearInput(clearSupportedSignals);
+            InputSlots.Add(clearInput.Key, clearInput);
+
             // Build router ports so tie lines can connect to them for each available endpoint routing port.
-            foreach (var tx in DeviceManager.AllDevices.OfType<NhdBaseDevice>().Where(d => d.IsTransmitter))
+            foreach (var tx in transmitters)
             {
                 foreach (var endpointOutputPort in tx.OutputPorts)
                 {
@@ -608,7 +666,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
                 }
             }
 
-            foreach (var rx in DeviceManager.AllDevices.OfType<NhdBaseDevice>().Where(d => !d.IsTransmitter))
+            foreach (var rx in matrixTieLineReceivers)
             {
                 foreach (var endpointInputPort in rx.InputPorts)
                 {
@@ -634,14 +692,34 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         }
     }
 
-    private static void BuildTieLines()
+    private void BuildTieLines()
     {
         try
         {
             var transmitters = DeviceManager.AllDevices.OfType<NhdBaseDevice>().Where(d => d.IsTransmitter).ToList();
             NhdTieLineConnector.AddTieLinesForTransmitters(transmitters);
 
-            var receivers = DeviceManager.AllDevices.OfType<NhdBaseDevice>().Where(d => !d.IsTransmitter).ToList();
+            var receiverCandidates = DeviceManager
+                .AllDevices.OfType<NhdBaseDevice>()
+                .Where(IsMatrixOutputSlotCandidate)
+                .ToList();
+
+            var skippedMultiviewReceivers = receiverCandidates
+                .Where(d => d.SupportsMultiview)
+                .ToList();
+
+            if (skippedMultiviewReceivers.Count > 0)
+            {
+                this.LogInformation(
+                    "Skipping multiview receivers from matrix tie-line generation at startup. count={count}, receivers='{receivers}'",
+                    skippedMultiviewReceivers.Count,
+                    string.Join(",", skippedMultiviewReceivers.Select(d => d.Key)));
+            }
+
+            var receivers = receiverCandidates
+                .Where(IsMatrixTieLineReceiver)
+                .ToList();
+
             NhdTieLineConnector.AddTieLinesForReceivers(receivers);
         }
         catch (Exception ex)
@@ -655,20 +733,24 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         if (output == null)
             return;
 
+        var trackedInput = inputSlot is NhdMatrixClearInput
+            ? null
+            : inputSlot;
+
         var hasVideo = signalType.HasFlag(eRoutingSignalType.Video);
         var hasAudio = signalType.HasFlag(eRoutingSignalType.Audio);
         if (signalType == eRoutingSignalType.AudioVideo || (hasVideo && hasAudio))
         {
-            output.SetInputRoute(eRoutingSignalType.Video, inputSlot);
-            output.SetInputRoute(eRoutingSignalType.Audio, inputSlot);
+            output.SetInputRoute(eRoutingSignalType.Video, trackedInput);
+            output.SetInputRoute(eRoutingSignalType.Audio, trackedInput);
         }
         else
         {
             if (hasVideo)
-                output.SetInputRoute(eRoutingSignalType.Video, inputSlot);
+                output.SetInputRoute(eRoutingSignalType.Video, trackedInput);
 
             if (hasAudio)
-                output.SetInputRoute(eRoutingSignalType.Audio, inputSlot);
+                output.SetInputRoute(eRoutingSignalType.Audio, trackedInput);
         }
 
         if (
@@ -676,25 +758,41 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
             || signalType.HasFlag(NhdRoutingSignalTypes.UsbOutput)
             || signalType.HasFlag(eRoutingSignalType.Usb))
         {
-            output.SetInputRoute(NhdRoutingSignalTypes.UsbInput, inputSlot);
-            output.SetInputRoute(NhdRoutingSignalTypes.UsbOutput, inputSlot);
+            output.SetInputRoute(NhdRoutingSignalTypes.UsbInput, trackedInput);
+            output.SetInputRoute(NhdRoutingSignalTypes.UsbOutput, trackedInput);
 
             if (Enum.IsDefined(typeof(eRoutingSignalType), "Usb"))
-                output.SetInputRoute(eRoutingSignalType.Usb, inputSlot);
+                output.SetInputRoute(eRoutingSignalType.Usb, trackedInput);
         }
 
         if (signalType.HasFlag(NhdRoutingSignalTypes.Ir))
-            output.SetInputRoute(NhdRoutingSignalTypes.Ir, inputSlot);
+            output.SetInputRoute(NhdRoutingSignalTypes.Ir, trackedInput);
 
         if (signalType.HasFlag(NhdRoutingSignalTypes.Serial))
-            output.SetInputRoute(NhdRoutingSignalTypes.Serial, inputSlot);
+            output.SetInputRoute(NhdRoutingSignalTypes.Serial, trackedInput);
     }
 
     private static string GetTxReference(IRoutingInputSlot inputSlot)
     {
+        if (inputSlot == null || inputSlot is NhdMatrixClearInput)
+            return RouteOff;
+
         return inputSlot is NhdMatrixInput matrixInput
             ? matrixInput.Device.ApiEndpointReference
-            : "null";
+            : RouteOff;
+    }
+
+    private static bool IsMatrixOutputSlotCandidate(NhdBaseDevice device)
+    {
+        return device != null
+            && !device.IsTransmitter
+            && device is not NhdCtlPro;
+    }
+
+    private static bool IsMatrixTieLineReceiver(NhdBaseDevice device)
+    {
+        return IsMatrixOutputSlotCandidate(device)
+            && !device.SupportsMultiview;
     }
 
     private sealed class NhdPrimaryStreamDomainRouter

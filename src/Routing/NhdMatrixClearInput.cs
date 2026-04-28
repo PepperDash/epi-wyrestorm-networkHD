@@ -6,11 +6,13 @@ namespace PepperDash.Essentials.Plugin.Routing;
 
 public class NhdMatrixClearInput : IRoutingInputSlot
 {
+    private readonly eRoutingSignalType _supportedSignalTypes;
+
     public string TxDeviceKey => string.Empty;
 
     public int SlotNumber => 0;
 
-    public eRoutingSignalType SupportedSignalTypes => eRoutingSignalType.AudioVideo;
+    public eRoutingSignalType SupportedSignalTypes => _supportedSignalTypes;
 
     public string Name => "None";
 
@@ -22,8 +24,12 @@ public class NhdMatrixClearInput : IRoutingInputSlot
 
     public event EventHandler VideoSyncChanged;
 
-    public NhdMatrixClearInput()
+    public NhdMatrixClearInput(eRoutingSignalType supportedSignalTypes = eRoutingSignalType.AudioVideo)
     {
+        _supportedSignalTypes = supportedSignalTypes == 0
+            ? eRoutingSignalType.AudioVideo
+            : supportedSignalTypes;
+
         IsOnline = new BoolFeedback("IsOnline", () => true);
         IsOnline.FireUpdate();
     }
