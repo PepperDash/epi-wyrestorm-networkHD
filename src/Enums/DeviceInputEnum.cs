@@ -2,6 +2,10 @@ using PepperDash.Essentials.Plugin.Enums;
 
 namespace PepperDash.Essentials.Plugin.Enums;
 
+/// <summary>
+/// Reserved for future model-specific generic input mapping.
+/// Intentionally retained even when not referenced by current device set.
+/// </summary>
 public class DeviceInputEnum : Enumeration<DeviceInputEnum>
 {
     private DeviceInputEnum(int value, string name) : base(value, name)

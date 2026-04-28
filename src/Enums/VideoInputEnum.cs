@@ -2,6 +2,10 @@ using PepperDash.Essentials.Plugin.Enums;
 
 namespace PepperDash.Essentials.Plugin.Enums;
 
+/// <summary>
+/// Reserved for future model-specific video-input mapping.
+/// Intentionally retained even when not referenced by current device set.
+/// </summary>
 public class VideoInputEnum : Enumeration<VideoInputEnum>
 {
     private VideoInputEnum(int value, string name)

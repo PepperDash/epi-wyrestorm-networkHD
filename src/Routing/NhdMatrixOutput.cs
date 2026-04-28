@@ -20,7 +20,6 @@ public class NhdMatrixOutput : IRoutingOutputSlot
             _device = device;
             _supportedSignalTypes = ResolveSupportedSignalTypes(device);
             _currentRoutes = BuildCurrentRoutes(_supportedSignalTypes);
-            // TODO: subscribe to stream/route feedback when comms is implemented
         }
         catch (Exception ex)
         {

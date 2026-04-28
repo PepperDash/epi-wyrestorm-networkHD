@@ -2,6 +2,10 @@ using PepperDash.Essentials.Plugin.Enums;
 
 namespace PepperDash.Essentials.Plugin.Enums;
 
+/// <summary>
+/// Reserved for future model-specific audio-input mapping.
+/// Intentionally retained even when not referenced by current device set.
+/// </summary>
 public class AudioInputEnum : Enumeration<AudioInputEnum>
 {
     private AudioInputEnum(int value, string name)

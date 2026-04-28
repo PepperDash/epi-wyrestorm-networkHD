@@ -886,14 +886,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             }
         }
 
-        private static string FormatByteSequence(IEnumerable<byte> bytes)
-        {
-            if (bytes == null)
-                return string.Empty;
-
-            return string.Join(" ", bytes.Select(value => value.ToString("X2", CultureInfo.InvariantCulture)));
-        }
-
         private bool TryHandleSessionLifecycleLine(string line)
         {
             if (string.IsNullOrWhiteSpace(line))
