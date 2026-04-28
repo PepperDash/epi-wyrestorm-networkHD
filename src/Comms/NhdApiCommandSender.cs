@@ -165,7 +165,10 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             if (!_boundCtl.Comms.IsConnected)
             {
-                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Connecting NHD-CTL comms", _boundCtl, _boundCtl.Key);
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Debug,
+                    "Connecting NHD-CTL comms for queued command dispatch",
+                    _boundCtl);
                 _boundCtl.Comms.Connect();
             }
 
@@ -178,7 +181,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                 : queued.Command + "\r\n";
 
             _boundCtl.Comms.SendText(commandWithDelimiter);
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ NHD API >> {Command}", queued.Source, queued.Command);
             Debug.LogMessage(Serilog.Events.LogEventLevel.Debug, "NHD API >> {Command}", queued.Source, queued.Command);
 
             _inFlightCommand = queued.Command;

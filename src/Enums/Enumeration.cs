@@ -71,14 +71,11 @@ public abstract class Enumeration<TEnum> : IComparable<Enumeration<TEnum>> where
         {
             var baseType = typeof(TEnum);
             var assembly = baseType.Assembly;
-
-            Debug.LogVerbose("Base type: {0}", baseType.Name);
             IEnumerable<Type> enumTypes = assembly.GetTypes().Where(baseType.IsAssignableFrom);
 
             var options = new List<TEnum>();
             foreach (Type enumType in enumTypes)
             {
-                Debug.LogVerbose("Found enum type: {0}", enumType.Name);
                 var fields =
                     enumType.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly)
                         .Select(x => x.GetValue(null))
@@ -86,7 +83,6 @@ public abstract class Enumeration<TEnum> : IComparable<Enumeration<TEnum>> where
 
                 foreach (var field in fields.Where(field => field != null))
                 {
-                    Debug.LogVerbose("Adding field to this enum:{0} - {1}", field.Name, enumType.Name);
                     if (options.Contains(field))
                         throw new Exception("This enum already exists");
 
@@ -99,7 +95,6 @@ public abstract class Enumeration<TEnum> : IComparable<Enumeration<TEnum>> where
         catch (Exception ex)
         {
             Debug.LogError("Error getting all options {message}", ex.Message);
-            Debug.LogDebug(ex, "Stack trace: ");
             throw;
         }
     }

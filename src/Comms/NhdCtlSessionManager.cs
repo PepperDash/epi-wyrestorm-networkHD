@@ -306,18 +306,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                     trimmedLayout,
                     tileReference);
 
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Sending multiview tile route immediately: layout='{Layout}', tile={Tile}, tx='{TxRef}', rx='{RxRef}', mode='{Mode}', activeTiles={ActiveTiles}",
-                    source,
-                    source.Key,
-                    trimmedLayout,
-                    tileReference,
-                    txEndpoint.ApiEndpointReference,
-                    rxEndpoint.ApiEndpointReference,
-                    rxEndpoint.MultiStreamMode,
-                    rxEndpoint.ActiveTileCount);
-
                 var sent = NhdApiCommandSender.TrySend(source, command);
                 if (sent)
                 {
@@ -338,18 +326,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                 RequestedByKey = source.Key,
                 QueuedUtc = DateTime.UtcNow,
             };
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Queued multiview tile route pending verification: layout='{Layout}', tile={Tile}, tx='{TxRef}', rx='{RxRef}', knownActiveTiles={KnownActiveTiles}, hasFreshState={HasFreshState}",
-                source,
-                source.Key,
-                trimmedLayout,
-                tileReference,
-                txEndpoint.ApiEndpointReference,
-                rxEndpoint.ApiEndpointReference,
-                rxEndpoint.ActiveTileCount,
-                rxEndpoint.IsMultiviewStateFresh(MultiviewStateFreshness));
 
             RequestMultiviewState(rxEndpoint, source);
             return false;
@@ -386,14 +362,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             }
 
             var command = $"mscene active {rxEndpoint.ApiEndpointReference} {trimmedLayout}";
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Activating multiview preset layout '{1}' on endpoint '{2}'",
-                source,
-                source.Key,
-                trimmedLayout,
-                rxEndpoint.ApiEndpointReference);
 
             return NhdApiCommandSender.TrySend(source, command);
         }
@@ -435,7 +403,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return false;
             }
 
-            if (!TryBuildScaledCustomLayoutCommand(rxEndpoint, layout, sourceReferencesByWindow, out var command, out var outputWidth, out var outputHeight, out var usedQueriedResolution))
+            if (!TryBuildScaledCustomLayoutCommand(rxEndpoint, layout, sourceReferencesByWindow, out var command, out _, out _, out _))
             {
                 Debug.LogError("[{0}] Custom multiview layout '{1}' on endpoint '{2}' has invalid geometry", source.Key, layout.Key, rxEndpoint.Key);
                 return false;
@@ -446,19 +414,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                 Debug.LogError("[{0}] Custom multiview layout '{1}' on endpoint '{2}' has invalid audio metadata: {3}", source.Key, layout.Key, rxEndpoint.Key, audioValidationError);
                 return false;
             }
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Applying custom multiview layout endpoint='{1}', layoutKey='{2}', mode='{3}', output={4}x{5}, usingQueriedResolution={6}, mappedSources={7}",
-                source,
-                source.Key,
-                rxEndpoint.Key,
-                layout.Key,
-                layout.Mode,
-                outputWidth,
-                outputHeight,
-                usedQueriedResolution ? "true" : "false",
-                sourceReferencesByWindow?.Count ?? 0);
 
             var sent = NhdApiCommandSender.TrySend(source, command);
             if (sent)
@@ -524,17 +479,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                 explicitWindowSources[route.WindowReference] = txEndpoint.ApiEndpointReference;
                 txByWindow[route.WindowReference] = txEndpoint;
             }
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Applying multiview preset endpoint='{1}', presetKey='{2}', layoutSource='{3}', layout='{4}', routeCount={5}",
-                source,
-                source.Key,
-                rxEndpoint.Key,
-                preset.Key,
-                preset.LayoutSource,
-                preset.Layout,
-                explicitWindowSources.Count);
 
             var layoutApplied = false;
             var normalizedLayout = preset.Layout.Trim();
@@ -606,21 +550,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                     QueuedUtc = DateTime.UtcNow,
                 };
 
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Queued fullscreen request pending multiview state refresh endpoint='{1}', sourceTile={2}",
-                    source,
-                    source.Key,
-                    rxEndpoint.Key,
-                    sourceTileReference);
-
                 RequestMultiviewState(rxEndpoint, source, force: true);
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Multiview state is stale on endpoint '{1}'. Refresh requested; fullscreen will retry when state updates.",
-                    source,
-                    source.Key,
-                    rxEndpoint.Key);
                 return false;
             }
 
@@ -666,16 +596,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                 QueuedUtc = DateTime.UtcNow,
             };
 
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Starting fullscreen transition endpoint='{1}', fromLayout='{2}', sourceTile={3}, sourceRef='{4}'",
-                source,
-                source.Key,
-                rxEndpoint.Key,
-                previousLayout,
-                sourceTileReference,
-                sourceTile.SourceReference);
-
             return NhdApiCommandSender.TrySend(source, $"mscene active {rxEndpoint.ApiEndpointReference} {fullscreenLayout}");
         }
 
@@ -696,14 +616,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             }
 
             _pendingFullscreenReturns[rxEndpoint.Key] = returnLayout;
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Returning from fullscreen endpoint='{1}' to layout='{2}'",
-                source,
-                source.Key,
-                rxEndpoint.Key,
-                returnLayout);
 
             var sent = NhdApiCommandSender.TrySend(source, $"mscene active {rxEndpoint.ApiEndpointReference} {returnLayout}");
             if (!sent)
@@ -775,14 +687,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             CaptureStartupProbeRestoreState(rxEndpoint);
             _pendingLayoutProbes[rxEndpoint.Key] = probe;
 
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Starting multiview layout probe endpoint='{1}', totalLayouts={2}",
-                source,
-                source.Key,
-                rxEndpoint.Key,
-                orderedLayouts.Count);
-
             if (!TrySendNextProbeLayout(rxEndpoint))
             {
                 _pendingLayoutProbes.Remove(rxEndpoint.Key);
@@ -809,13 +713,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             _startupProbeCompleted.Remove(rxEndpoint.Key);
             rxEndpoint.ClearLearnedPresetLayoutGeometrySignatures();
 
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Starting explicit multiview layout reprobe for endpoint '{1}'",
-                source,
-                source.Key,
-                rxEndpoint.Key);
-
             return TryProbeAndLearnMultiviewLayouts(source, rxEndpoint);
         }
 
@@ -827,8 +724,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             var line = (args.Text ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(line))
                 return;
-
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ NHD API << {Line}", _ctl, line);
 
             if (TryHandleSessionLifecycleLine(line))
                 return;
@@ -956,11 +851,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return;
 
             _ctl.Comms.SendBytes(response.ToArray());
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ Sent Telnet negotiation reply bytes: {0}",
-                _ctl,
-                FormatByteSequence(response));
         }
 
         private static void AppendTelnetNegotiationReply(byte command, byte option, List<byte> response)
@@ -1056,10 +946,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                 if (!_loginAutomationDisabledNoticeLogged)
                 {
                     _loginAutomationDisabledNoticeLogged = true;
-                    Debug.LogMessage(
-                        Serilog.Events.LogEventLevel.Information,
-                        "$$$$$$$$$$ Telnet login automation disabled; ignoring credential prompts",
-                        _ctl);
                 }
 
                 return true;
@@ -1102,21 +988,11 @@ namespace PepperDash.Essentials.Plugin.Comms
         private void SendUsernameCredential(string username)
         {
             _ctl.Comms.SendText((username ?? string.Empty) + "\r\n");
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ Login prompt 'User:' detected; sending configured username",
-                _ctl);
         }
 
         private void SendPasswordCredential(string password)
         {
             _ctl.Comms.SendText((password ?? string.Empty) + "\r\n");
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ Login prompt 'Password:' detected; sending configured password",
-                _ctl);
         }
 
         private void HandleLoginFailure(string reason)
@@ -1224,11 +1100,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (response.Count > 0)
             {
                 _ctl.Comms.SendBytes(response.ToArray());
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ Sent Telnet negotiation reply bytes: {0}",
-                    _ctl,
-                    FormatByteSequence(response));
             }
 
             return true;
@@ -1359,8 +1230,6 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             if (_ctl.Comms.IsConnected)
                 return;
-
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ Connecting NHD-CTL session transport", _ctl);
             _ctl.Comms.Connect();
         }
 
@@ -1386,21 +1255,10 @@ namespace PepperDash.Essentials.Plugin.Comms
                 // SSH sessions can come up without a banner/prompt; send a safe command probe
                 // so first response can mark session ready and release bootstrap.
                 SendPreReadyApiCommand("config get name");
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Debug,
-                    "Sent session command probe; reason='{Reason}'",
-                    _ctl,
-                    reason ?? "unspecified");
                 return;
             }
 
             _ctl.Comms.SendText("\r\n");
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Debug,
-                "Sent session probe line; reason='{Reason}'",
-                _ctl,
-                reason ?? "unspecified");
         }
 
         private void SendPreReadyApiCommand(string command)
@@ -1410,18 +1268,6 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             var normalized = command.Trim();
             _ctl.Comms.SendText(normalized + "\r\n");
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ NHD API >> {Command}",
-                _ctl,
-                normalized);
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Debug,
-                "NHD API >> {Command}",
-                _ctl,
-                normalized);
         }
 
         private bool TryHandleMsceneActiveResponseLine(string line)
@@ -1437,14 +1283,17 @@ namespace PepperDash.Essentials.Plugin.Comms
             var endpoint = ResolveEndpoint(reference);
             if (endpoint == null)
             {
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] mscene active response unresolved endpoint='{1}', layout='{2}', result='{3}'",
-                    _ctl,
-                    _ctl.Key,
-                    reference,
-                    layout,
-                    success ? "success" : "failure");
+                if (!success)
+                {
+                    Debug.LogMessage(
+                        Serilog.Events.LogEventLevel.Warning,
+                        "mscene active response unresolved endpoint='{EndpointRef}', layout='{Layout}', result='{Result}'",
+                        _ctl,
+                        reference,
+                        layout,
+                        "failure");
+                }
+
                 return true;
             }
 
@@ -1474,14 +1323,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                         };
 
                         SetFullscreenReturnState(endpoint, pendingFullscreen.PreviousLayoutName);
-                        Debug.LogMessage(
-                            Serilog.Events.LogEventLevel.Information,
-                            "$$$$$$$$$$ [{SourceKey}] Fullscreen transition routed tile source endpoint='{1}', sourceTile={2}, sourceRef='{3}'",
-                            _ctl,
-                            _ctl.Key,
-                            endpoint.Key,
-                            pendingFullscreen.SourceTileReference,
-                            pendingFullscreen.SourceReference);
                     }
                     else
                     {
@@ -1490,10 +1331,9 @@ namespace PepperDash.Essentials.Plugin.Comms
                             $"mscene active {endpoint.ApiEndpointReference} {pendingFullscreen.PreviousLayoutName}");
 
                         Debug.LogMessage(
-                            Serilog.Events.LogEventLevel.Information,
-                            "$$$$$$$$$$ [{SourceKey}] Fullscreen transition route failed; rollback to previous layout '{1}' on endpoint '{2}' was {3}",
+                            Serilog.Events.LogEventLevel.Warning,
+                            "Fullscreen transition route failed; rollback to previous layout '{Layout}' on endpoint '{EndpointKey}' was {RollbackState}",
                             _ctl,
-                            _ctl.Key,
                             pendingFullscreen.PreviousLayoutName,
                             endpoint.Key,
                             rollbackSent ? "sent" : "not sent");
@@ -1527,15 +1367,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                 if (NhdBaseDevice.TryInferPresetLayoutShape(layout, out var inferredTileCount, out var inferredMode))
                 {
                     endpoint.SetMultiviewRuntimeState(inferredMode, inferredTileCount);
-                    Debug.LogMessage(
-                        Serilog.Events.LogEventLevel.Information,
-                        "$$$$$$$$$$ [{SourceKey}] Inferred multiview layout shape endpoint='{1}', layout='{2}', mode='{3}', tiles={4}",
-                        _ctl,
-                        _ctl.Key,
-                        endpoint.Key,
-                        layout,
-                        inferredMode,
-                        inferredTileCount);
                 }
 
                 RequestMultiviewState(endpoint, force: true);
@@ -1551,26 +1382,19 @@ namespace PepperDash.Essentials.Plugin.Comms
                 && !success)
             {
                 probe.AttemptedCount++;
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Layout probe activation failed endpoint='{1}', layout='{2}', attempted={3}",
-                    _ctl,
-                    _ctl.Key,
-                    endpoint.Key,
-                    layout,
-                    probe.AttemptedCount);
 
                 TrySendNextProbeLayout(endpoint);
             }
 
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] mscene active endpoint='{1}', layout='{2}', result='{3}'",
-                _ctl,
-                _ctl.Key,
-                endpoint.Key,
-                layout,
-                success ? "success" : "failure");
+            if (!success)
+            {
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Warning,
+                    "mscene active endpoint='{EndpointKey}', layout='{Layout}', result='failure'",
+                    _ctl,
+                    endpoint.Key,
+                    layout);
+            }
 
             return true;
         }
@@ -1590,16 +1414,18 @@ namespace PepperDash.Essentials.Plugin.Comms
             var endpoint = ResolveEndpoint(reference);
             if (endpoint == null)
             {
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] mscene change unresolved endpoint='{1}', layout='{2}', tile='{3}', source='{4}', result='{5}'",
-                    _ctl,
-                    _ctl.Key,
-                    reference,
-                    layout,
-                    tile,
-                    source,
-                    success ? "success" : "failure");
+                if (!success)
+                {
+                    Debug.LogMessage(
+                        Serilog.Events.LogEventLevel.Warning,
+                        "mscene change unresolved endpoint='{EndpointRef}', layout='{Layout}', tile='{Tile}', source='{Source}', result='failure'",
+                        _ctl,
+                        reference,
+                        layout,
+                        tile,
+                        source);
+                }
+
                 return true;
             }
 
@@ -1625,16 +1451,17 @@ namespace PepperDash.Essentials.Plugin.Comms
                 }
             }
 
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] mscene change endpoint='{1}', layout='{2}', tile='{3}', source='{4}', result='{5}'",
-                _ctl,
-                _ctl.Key,
-                endpoint.Key,
-                layout,
-                tile,
-                source,
-                success ? "success" : "failure");
+            if (!success)
+            {
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Warning,
+                    "mscene change endpoint='{EndpointKey}', layout='{Layout}', tile='{Tile}', source='{Source}', result='failure'",
+                    _ctl,
+                    endpoint.Key,
+                    layout,
+                    tile,
+                    source);
+            }
 
             return true;
         }
@@ -1672,17 +1499,18 @@ namespace PepperDash.Essentials.Plugin.Comms
                 }
             }
 
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] mscene set audio reference='{1}', resolvedEndpoint='{2}', layout='{3}', mode='{4}', target='{5}', result='{6}'",
-                _ctl,
-                _ctl.Key,
-                reference,
-                endpoint?.Key ?? "unresolved",
-                layout,
-                mode,
-                target,
-                success ? "success" : "failure");
+            if (!success)
+            {
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Warning,
+                    "mscene set audio reference='{Reference}', resolvedEndpoint='{ResolvedEndpoint}', layout='{Layout}', mode='{Mode}', target='{Target}', result='failure'",
+                    _ctl,
+                    reference,
+                    endpoint?.Key ?? "unresolved",
+                    layout,
+                    mode,
+                    target);
+            }
 
             return true;
         }
@@ -1704,15 +1532,16 @@ namespace PepperDash.Essentials.Plugin.Comms
                 RequestMultiviewState(endpoint, force: true);
             }
 
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] mview set audio reference='{1}', resolvedEndpoint='{2}', source='{3}', result='{4}'",
-                _ctl,
-                _ctl.Key,
-                reference,
-                endpoint?.Key ?? "unresolved",
-                source,
-                success ? "success" : "failure");
+            if (!success)
+            {
+                Debug.LogMessage(
+                    Serilog.Events.LogEventLevel.Warning,
+                    "mview set audio reference='{Reference}', resolvedEndpoint='{ResolvedEndpoint}', source='{Source}', result='failure'",
+                    _ctl,
+                    reference,
+                    endpoint?.Key ?? "unresolved",
+                    source);
+            }
 
             return true;
         }
@@ -1730,7 +1559,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             var endpoint = ResolveEndpoint(alias) ?? ResolveEndpoint(hostname);
             if (endpoint == null)
             {
-                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Alias mapping unresolved. Hostname='{1}', Alias='{2}'", _ctl, _ctl.Key, hostname, alias ?? "null");
                 return true;
             }
 
@@ -1739,8 +1567,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             endpoint.SetResolvedHostname(hostname);
 
             var hostnameChanged = !string.Equals(previousHostname, endpoint.Hostname, StringComparison.OrdinalIgnoreCase);
-
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Alias mapping resolved endpoint='{1}', Hostname='{2}', Alias='{3}'", _ctl, _ctl.Key, endpoint.Key, hostname, alias ?? "null");
 
             EnsureNotificationsSubscribed(hostname);
             EnsureNotificationsSubscribed(alias);
@@ -1768,7 +1594,6 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             var endpoint = ResolveEndpoint(reference);
             endpoint?.SetOnlineState(isOnline);
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Notify endpoint reference='{1}', state='{2}', resolvedEndpoint='{3}'", _ctl, _ctl.Key, reference, isOnline ? "online" : "offline", endpoint?.Key ?? "unresolved");
 
             EnsureNotificationsSubscribed(reference);
 
@@ -1800,10 +1625,9 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (!TryParseVideoNotifyState(stateToken, out var syncDetected))
             {
                 Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Notify video state could not be parsed: reference='{1}', token='{2}'",
+                    Serilog.Events.LogEventLevel.Warning,
+                    "Notify video state could not be parsed: reference='{Reference}', token='{Token}'",
                     _ctl,
-                    _ctl.Key,
                     reference,
                     stateToken);
                 return true;
@@ -1813,13 +1637,6 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             if (endpoint == null)
             {
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Notify video reference='{1}' could not be resolved; state='{2}'",
-                    _ctl,
-                    _ctl.Key,
-                    reference,
-                    syncDetected ? "detected" : "lost");
                 return true;
             }
 
@@ -1827,41 +1644,15 @@ namespace PepperDash.Essentials.Plugin.Comms
             {
                 ScheduleVideoLostDebounce(endpoint, reference);
 
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Notify video lost queued for debounce endpoint='{1}', reference='{2}', delayMs={3}",
-                    _ctl,
-                    _ctl.Key,
-                    endpoint.Key,
-                    reference,
-                    (int)VideoLostNotifyDebounce.TotalMilliseconds);
-
                 return true;
             }
 
             if (CancelPendingVideoLostDebounce(endpoint.Key))
             {
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Notify video found suppressed during debounce endpoint='{1}', reference='{2}'",
-                    _ctl,
-                    _ctl.Key,
-                    endpoint.Key,
-                    reference);
-
                 return true;
             }
 
             endpoint.SetInputSyncState(true);
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Notify video reference='{1}', sync='{2}', resolvedEndpoint='{3}'",
-                _ctl,
-                _ctl.Key,
-                reference,
-                syncDetected ? "detected" : "lost",
-                endpoint.Key);
 
             return true;
         }
@@ -1902,15 +1693,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                     return;
 
                 endpoint.SetInputSyncState(false);
-
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Debounced video lost applied endpoint='{1}', reference='{2}', delayMs={3}",
-                    _ctl,
-                    _ctl.Key,
-                    endpoint.Key,
-                    reference,
-                    (int)VideoLostNotifyDebounce.TotalMilliseconds);
             }, null, VideoLostNotifyDebounce, Timeout.InfiniteTimeSpan);
 
             lock (_videoLostDebounceLock)
@@ -1951,10 +1733,9 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (!TryParseVideoNotifyState(stateToken, out var sinkDetected))
             {
                 Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Notify sink state could not be parsed: reference='{1}', token='{2}'",
+                    Serilog.Events.LogEventLevel.Warning,
+                    "Notify sink state could not be parsed: reference='{Reference}', token='{Token}'",
                     _ctl,
-                    _ctl.Key,
                     reference,
                     stateToken);
                 return true;
@@ -1965,16 +1746,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             {
                 endpoint.SetInputSyncState(sinkDetected);
             }
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Notify sink reference='{1}', state='{2}', resolvedEndpoint='{3}', appliedToSync='{4}'",
-                _ctl,
-                _ctl.Key,
-                reference,
-                sinkDetected ? "found" : "lost",
-                endpoint?.Key ?? "unresolved",
-                endpoint?.IsTransmitter == true ? "yes" : "no");
 
             return true;
         }
@@ -2230,23 +2001,9 @@ namespace PepperDash.Essentials.Plugin.Comms
                 .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
-
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Processing devicelist with {1} references", _ctl, _ctl.Key, refs.Count);
-
-            var listedEndpoints = new HashSet<NhdBaseDevice>();
             foreach (var reference in refs)
             {
                 EnsureNotificationsSubscribed(reference);
-
-                var endpoint = ResolveEndpoint(reference);
-                if (endpoint == null)
-                {
-                    Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Devicelist reference unresolved: '{1}'", _ctl, _ctl.Key, reference);
-                    continue;
-                }
-
-                listedEndpoints.Add(endpoint);
-                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Devicelist resolved endpoint: '{1}' (ref='{2}')", _ctl, _ctl.Key, endpoint.Key, reference);
             }
 
             // Device presence is determined from endpoint notify and device-status parsing,
@@ -2344,15 +2101,6 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             if (!NhdGlobalRouter.Instance.TrySetTrackedMatrixRoute(txEndpointKey, rxEndpoint.Key, signalType))
                 return;
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Applied tracked matrix route from CTL feedback: tx='{1}', rx='{2}', signal='{3}'",
-                _ctl,
-                _ctl.Key,
-                txEndpointKey ?? "null",
-                rxEndpoint.Key,
-                signalType);
         }
 
         private static eRoutingSignalType GetMatrixSignalType(string domain)
@@ -2422,14 +2170,6 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             endpoint.SetAvailablePresetMultiviewLayouts(layouts);
             TryStartStartupProbeIfReady(endpoint);
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Parsed {1} preset layouts for endpoint '{2}'",
-                _ctl,
-                _ctl.Key,
-                layouts.Count,
-                endpoint.Key);
 
             return true;
         }
@@ -2559,13 +2299,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                 {
                     captured = true;
                     TryMatchStartupProbeOriginalLayout(endpoint, recalledLayout);
-                    Debug.LogMessage(
-                        Serilog.Events.LogEventLevel.Information,
-                        "$$$$$$$$$$ [{SourceKey}] Learned layout geometry endpoint='{1}', layout='{2}'",
-                        _ctl,
-                        _ctl.Key,
-                        endpoint.Key,
-                        recalledLayout);
                 }
 
                 if (_pendingLayoutProbes.TryGetValue(endpoint.Key, out var probe)
@@ -2583,44 +2316,12 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             if (endpoint.TryIdentifyPresetLayoutByActiveGeometry(out var inferredLayout))
             {
-                var presetChanged = !string.Equals(endpoint.ActivePresetMultiviewLayoutName, inferredLayout, StringComparison.OrdinalIgnoreCase)
-                    || !endpoint.ActivePresetMultiviewLayoutInferred;
-
                 endpoint.SetActivePresetMultiviewLayout(inferredLayout, inferred: true);
-
-                if (presetChanged)
-                {
-                    Debug.LogMessage(
-                        Serilog.Events.LogEventLevel.Information,
-                        "$$$$$$$$$$ [{SourceKey}] Inferred active controller layout from multiview state endpoint='{EndpointKey}', layout='{Layout}', mode='{Mode}', tiles={Tiles}",
-                        _ctl,
-                        _ctl.Key,
-                        endpoint.Key,
-                        inferredLayout,
-                        endpoint.MultiStreamMode,
-                        endpoint.ActiveTileCount);
-                }
             }
 
             if (endpoint.TryIdentifyCustomLayoutByActiveGeometry(out var inferredCustomLayout))
             {
-                var customChanged = !string.Equals(endpoint.ActiveCustomMultiviewLayoutKey, inferredCustomLayout, StringComparison.OrdinalIgnoreCase)
-                    || !endpoint.ActiveCustomMultiviewLayoutInferred;
-
                 endpoint.SetActiveCustomMultiviewLayout(inferredCustomLayout, inferred: true);
-
-                if (customChanged)
-                {
-                    Debug.LogMessage(
-                        Serilog.Events.LogEventLevel.Information,
-                        "$$$$$$$$$$ [{SourceKey}] Inferred active custom layout from multiview state endpoint='{EndpointKey}', layoutKey='{LayoutKey}', mode='{Mode}', tiles={Tiles}",
-                        _ctl,
-                        _ctl.Key,
-                        endpoint.Key,
-                        inferredCustomLayout,
-                        endpoint.MultiStreamMode,
-                        endpoint.ActiveTileCount);
-                }
             }
         }
 
@@ -3069,14 +2770,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                 rxEndpoint.SetActiveMultiviewAudioWindow(windowReference);
                 _pendingCustomWindowAudioApplies[rxEndpoint.Key] = windowReference;
 
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Applied custom layout audio metadata endpoint='{1}', mode='window', window={2}",
-                    source,
-                    source.Key,
-                    rxEndpoint.Key,
-                    windowReference);
-
                 TryDispatchPendingCustomWindowAudioForEndpoint(rxEndpoint);
                 return true;
             }
@@ -3114,14 +2807,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                     return false;
                 }
 
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Applied custom layout audio metadata endpoint='{1}', mode='separate', source='{2}'",
-                    source,
-                    source.Key,
-                    rxEndpoint.Key,
-                    separateSource);
-
                 return true;
             }
 
@@ -3156,15 +2841,6 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             rxEndpoint.SetActiveMultiviewAudioSeparateSource(sourceReference);
             _pendingCustomWindowAudioApplies.Remove(rxEndpoint.Key);
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Applied deferred custom-window audio endpoint='{1}', window={2}, source='{3}'",
-                _ctl,
-                _ctl.Key,
-                rxEndpoint.Key,
-                windowReference,
-                sourceReference);
         }
 
         private static int ScaleCoordinate(int value, int sourceSpan, int targetSpan)
@@ -3200,7 +2876,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return;
 
             var sender = source ?? _ctl;
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ Requesting multiview state for endpoint '{EndpointKey}'", sender, endpoint.Key);
             NhdApiCommandSender.TrySend(sender, $"mview get {endpoint.ApiEndpointReference}");
         }
 
@@ -3212,7 +2887,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             _lastDeviceStatusRefreshUtc = DateTime.UtcNow;
 
             var sender = source ?? _ctl;
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ Requesting device status", sender);
             NhdApiCommandSender.TrySend(sender, "config get device status");
         }
 
@@ -3224,8 +2898,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             _lastMatrixRefreshUtc = DateTime.UtcNow;
 
             var sender = source ?? _ctl;
-
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ Requesting matrix route state", sender);
 
             NhdApiCommandSender.TrySend(sender, "matrix video get");
             NhdApiCommandSender.TrySend(sender, "matrix audio get");
@@ -3249,20 +2921,14 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (!endpointSubscribed)
             {
                 Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ Failed to subscribe endpoint notifications for endpoint reference '{EndpointRef}' (endpoint={EndpointResult})",
+                    Serilog.Events.LogEventLevel.Warning,
+                    "Failed to subscribe endpoint notifications for endpoint reference '{EndpointRef}'",
                     sender,
-                    reference,
-                    endpointSubscribed ? "ok" : "failed");
+                    reference);
                 return;
             }
 
             _subscribedNotificationReferences.Add(reference);
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ Queued notification subscriptions for endpoint reference '{EndpointRef}'",
-                sender,
-                reference);
         }
 
         private bool TrySendNextProbeLayout(NhdBaseDevice endpoint)
@@ -3277,28 +2943,11 @@ namespace PepperDash.Essentials.Plugin.Comms
             {
                 _pendingLayoutProbes.Remove(endpoint.Key);
                 TryRestoreLayoutAfterProbe(endpoint);
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Multiview layout probe complete endpoint='{1}', attempted={2}, learned={3}",
-                    _ctl,
-                    _ctl.Key,
-                    endpoint.Key,
-                    probe.AttemptedCount,
-                    probe.LearnedCount);
                 return true;
             }
 
             var nextLayout = probe.RemainingLayouts.Dequeue();
             probe.ActiveLayout = nextLayout;
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Probing layout endpoint='{1}', layout='{2}', remaining={3}",
-                _ctl,
-                _ctl.Key,
-                endpoint.Key,
-                nextLayout,
-                probe.RemainingLayouts.Count);
 
             return NhdApiCommandSender.TrySend(_ctl, $"mscene active {endpoint.ApiEndpointReference} {nextLayout}");
         }
@@ -3313,14 +2962,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                 PreviousLayoutName = previousLayoutName,
                 CapturedUtc = DateTime.UtcNow,
             };
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Fullscreen return available endpoint='{1}', returnLayout='{2}'",
-                _ctl,
-                _ctl.Key,
-                endpoint.Key,
-                previousLayoutName);
         }
 
         private void ClearFullscreenReturnState(NhdBaseDevice endpoint, string reason)
@@ -3333,14 +2974,6 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             if (!_fullscreenReturnStates.Remove(endpoint.Key))
                 return;
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Fullscreen return cleared endpoint='{1}', reason='{2}'",
-                _ctl,
-                _ctl.Key,
-                endpoint.Key,
-                reason ?? "unspecified");
         }
 
         private void TryStartStartupProbeIfReady(NhdBaseDevice endpoint)
@@ -3369,12 +3002,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (TryProbeAndLearnMultiviewLayouts(_ctl, endpoint))
             {
                 _startupProbeCompleted.Add(endpoint.Key);
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Startup multiview layout probe started for endpoint '{1}'",
-                    _ctl,
-                    _ctl.Key,
-                    endpoint.Key);
             }
         }
 
@@ -3421,13 +3048,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return;
 
             state.MatchedOriginalLayoutName = capturedLayout;
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Matched pre-probe receiver state endpoint='{1}' to layout='{2}'",
-                _ctl,
-                _ctl.Key,
-                endpoint.Key,
-                capturedLayout);
         }
 
         private void TryRestoreLayoutAfterProbe(NhdBaseDevice endpoint)
@@ -3445,29 +3065,12 @@ namespace PepperDash.Essentials.Plugin.Comms
                 : state.OriginalLayoutName;
 
             if (string.IsNullOrWhiteSpace(restoreLayout))
-            {
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Probe complete for endpoint='{1}' with no known pre-probe layout to restore",
-                    _ctl,
-                    _ctl.Key,
-                    endpoint.Key);
                 return;
-            }
 
             if (string.Equals(endpoint.ActivePresetMultiviewLayoutName, restoreLayout, StringComparison.OrdinalIgnoreCase))
                 return;
 
-            if (NhdApiCommandSender.TrySend(_ctl, $"mscene active {endpoint.ApiEndpointReference} {restoreLayout}"))
-            {
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Restoring pre-probe layout endpoint='{1}', layout='{2}'",
-                    _ctl,
-                    _ctl.Key,
-                    endpoint.Key,
-                    restoreLayout);
-            }
+            NhdApiCommandSender.TrySend(_ctl, $"mscene active {endpoint.ApiEndpointReference} {restoreLayout}");
         }
 
         private static string BuildActiveGeometrySignature(NhdBaseDevice endpoint)
@@ -3500,7 +3103,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             _lastMsceneListRequestUtc[endpoint.Key] = DateTime.UtcNow;
 
             var sender = source ?? _ctl;
-            Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Requesting preset layout list for endpoint '{1}'", sender, sender.Key, endpoint.Key);
             NhdApiCommandSender.TrySend(sender, $"mscene get {endpoint.ApiEndpointReference}");
         }
 
@@ -3520,7 +3122,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (DateTime.UtcNow - pending.QueuedUtc > PendingTileRouteExpiry)
             {
                 _pendingTileRoutes.Remove(rxEndpoint.Key);
-                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Dropping stale pending multiview tile route for endpoint '{1}'", _ctl, _ctl.Key, rxEndpoint.Key);
                 return;
             }
 
@@ -3531,20 +3132,15 @@ namespace PepperDash.Essentials.Plugin.Comms
             {
                 _pendingTileRoutes.Remove(rxEndpoint.Key);
                 Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Rejected queued multiview tile route for endpoint '{1}': requested tile={2}, activeTiles={3}, mode='{4}'",
+                    Serilog.Events.LogEventLevel.Warning,
+                    "Rejected queued multiview tile route for endpoint '{EndpointKey}': requested tile={RequestedTile}, activeTiles={ActiveTiles}, mode='{Mode}'",
                     _ctl,
-                    _ctl.Key,
                     rxEndpoint.Key,
                     pending.TileReference,
                     rxEndpoint.ActiveTileCount,
                     rxEndpoint.MultiStreamMode);
                 return;
             }
-
-            var existingSource = rxEndpoint.TryGetActiveMultiviewTile(pending.TileReference, out var existingTile)
-                ? existingTile.SourceReference
-                : "unknown";
 
             var txEndpoint = DeviceManager.GetDeviceForKey(pending.TxEndpointKey) as NhdBaseDevice;
             if (txEndpoint == null)
@@ -3561,27 +3157,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                 rxEndpoint.ApiEndpointReference,
                 pending.LayoutName,
                 pending.TileReference);
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Verified queued multiview tile route; sending command layout='{Layout}', tile={Tile}, tx='{TxRef}', rx='{RxRef}', mode='{Mode}', activeTiles={ActiveTiles}",
-                _ctl,
-                _ctl.Key,
-                pending.LayoutName,
-                pending.TileReference,
-                txEndpoint.ApiEndpointReference,
-                rxEndpoint.ApiEndpointReference,
-                rxEndpoint.MultiStreamMode,
-                rxEndpoint.ActiveTileCount);
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Multiview tile {Tile} currently mapped to '{MappedSource}' on endpoint '{EndpointKey}'",
-                _ctl,
-                _ctl.Key,
-                pending.TileReference,
-                existingSource ?? "null",
-                rxEndpoint.Key);
 
             var sent = NhdApiCommandSender.TrySend(_ctl, command);
             if (sent)
@@ -3604,12 +3179,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (DateTime.UtcNow - pending.QueuedUtc > PendingFullscreenRequestExpiry)
             {
                 _pendingFullscreenRequests.Remove(rxEndpoint.Key);
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Dropping stale pending fullscreen request for endpoint '{1}'",
-                    _ctl,
-                    _ctl.Key,
-                    rxEndpoint.Key);
                 return;
             }
 
@@ -3620,10 +3189,9 @@ namespace PepperDash.Essentials.Plugin.Comms
             {
                 _pendingFullscreenRequests.Remove(rxEndpoint.Key);
                 Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Rejected queued fullscreen request for endpoint '{1}': activeTiles={2}",
+                    Serilog.Events.LogEventLevel.Warning,
+                    "Rejected queued fullscreen request for endpoint '{EndpointKey}': activeTiles={ActiveTiles}",
                     _ctl,
-                    _ctl.Key,
                     rxEndpoint.Key,
                     rxEndpoint.ActiveTileCount);
                 return;
@@ -3633,10 +3201,9 @@ namespace PepperDash.Essentials.Plugin.Comms
             {
                 _pendingFullscreenRequests.Remove(rxEndpoint.Key);
                 Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Rejected queued fullscreen request for endpoint '{1}': requested sourceTile={2}, activeTiles={3}",
+                    Serilog.Events.LogEventLevel.Warning,
+                    "Rejected queued fullscreen request for endpoint '{EndpointKey}': requested sourceTile={SourceTile}, activeTiles={ActiveTiles}",
                     _ctl,
-                    _ctl.Key,
                     rxEndpoint.Key,
                     pending.SourceTileReference,
                     rxEndpoint.ActiveTileCount);
@@ -3648,10 +3215,9 @@ namespace PepperDash.Essentials.Plugin.Comms
             {
                 _pendingFullscreenRequests.Remove(rxEndpoint.Key);
                 Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Rejected queued fullscreen request for endpoint '{1}': active layout is unknown",
+                    Serilog.Events.LogEventLevel.Warning,
+                    "Rejected queued fullscreen request for endpoint '{EndpointKey}': active layout is unknown",
                     _ctl,
-                    _ctl.Key,
                     rxEndpoint.Key);
                 return;
             }
@@ -3660,10 +3226,9 @@ namespace PepperDash.Essentials.Plugin.Comms
             {
                 _pendingFullscreenRequests.Remove(rxEndpoint.Key);
                 Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Rejected queued fullscreen request for endpoint '{1}': source for tile {2} is unknown",
+                    Serilog.Events.LogEventLevel.Warning,
+                    "Rejected queued fullscreen request for endpoint '{EndpointKey}': source for tile {SourceTile} is unknown",
                     _ctl,
-                    _ctl.Key,
                     rxEndpoint.Key,
                     pending.SourceTileReference);
                 return;
@@ -3674,10 +3239,9 @@ namespace PepperDash.Essentials.Plugin.Comms
             {
                 _pendingFullscreenRequests.Remove(rxEndpoint.Key);
                 Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Rejected queued fullscreen request for endpoint '{1}': fullscreen layout '{2}' is unavailable",
+                    Serilog.Events.LogEventLevel.Warning,
+                    "Rejected queued fullscreen request for endpoint '{EndpointKey}': fullscreen layout '{Layout}' is unavailable",
                     _ctl,
-                    _ctl.Key,
                     rxEndpoint.Key,
                     fullscreenLayout);
                 return;
@@ -3693,17 +3257,6 @@ namespace PepperDash.Essentials.Plugin.Comms
                 QueuedUtc = DateTime.UtcNow,
             };
 
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Dispatching queued fullscreen request endpoint='{1}', fromLayout='{2}', sourceTile={3}, sourceRef='{4}', requestedBy='{5}'",
-                _ctl,
-                _ctl.Key,
-                rxEndpoint.Key,
-                previousLayout,
-                pending.SourceTileReference,
-                sourceTile.SourceReference,
-                pending.RequestedByKey ?? "unknown");
-
             var sent = NhdApiCommandSender.TrySend(_ctl, $"mscene active {rxEndpoint.ApiEndpointReference} {fullscreenLayout}");
             if (sent)
             {
@@ -3713,10 +3266,9 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             _pendingFullscreen.Remove(rxEndpoint.Key);
             Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Failed to dispatch queued fullscreen request for endpoint '{1}'",
+                Serilog.Events.LogEventLevel.Warning,
+                "Failed to dispatch queued fullscreen request for endpoint '{EndpointKey}'",
                 _ctl,
-                _ctl.Key,
                 rxEndpoint.Key);
         }
 
@@ -3743,13 +3295,6 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             _recentFullscreenRoutes.Remove(rxEndpoint.Key);
 
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ [{SourceKey}] Keeping fullscreen return available for endpoint '{1}' because route matches recent fullscreen transition",
-                _ctl,
-                _ctl.Key,
-                rxEndpoint.Key);
-
             return true;
         }
 
@@ -3763,7 +3308,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             foreach (var key in expiredKeys)
             {
                 _pendingTileRoutes.Remove(key);
-                Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{SourceKey}] Expired pending multiview tile route for endpoint '{1}'", _ctl, _ctl.Key, key);
             }
         }
 
@@ -3777,12 +3321,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             foreach (var key in expiredKeys)
             {
                 _pendingFullscreenRequests.Remove(key);
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Information,
-                    "$$$$$$$$$$ [{SourceKey}] Expired pending fullscreen request for endpoint '{1}'",
-                    _ctl,
-                    _ctl.Key,
-                    key);
             }
         }
 
@@ -3800,13 +3338,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             {
                 endpoint.SetOnlineState(false);
             }
-
-            Debug.LogMessage(
-                Serilog.Events.LogEventLevel.Information,
-                "$$$$$$$$$$ Marked all endpoints offline; reason='{Reason}', endpointCount={EndpointCount}",
-                _ctl,
-                reason ?? "unspecified",
-                endpoints.Count);
         }
 
         private static NhdBaseDevice ResolveEndpoint(string reference)

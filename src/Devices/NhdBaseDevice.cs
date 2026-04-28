@@ -174,7 +174,6 @@ namespace PepperDash.Essentials.Plugin
 				return;
 
 			Hostname = value;
-			Debug.LogMessage(Serilog.Events.LogEventLevel.Information, "$$$$$$$$$$ [{DeviceKey}] Hostname resolved to '{1}' (alias='{2}')", this, Key, Hostname, ConfiguredAlias ?? "null");
 		}
 
 		public void SetOnlineState(bool isOnline)
@@ -217,14 +216,6 @@ namespace PepperDash.Essentials.Plugin
 				return;
 
 			_inputSyncDetected = hasSync;
-
-			Debug.LogMessage(
-				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{DeviceKey}] Input sync -> {1} (endpointRef='{2}')",
-				this,
-				Key,
-				hasSync ? "DETECTED" : "LOST",
-				ApiEndpointReference);
 
 			InputSyncDetected.FireUpdate();
 			InputSyncStateChanged?.Invoke(this, new NhdDeviceBoolStateChangedEventArgs(hasSync));
@@ -275,14 +266,6 @@ namespace PepperDash.Essentials.Plugin
 			_hdmiOutResolution = normalized;
 			_hdmiOutResolutionWidth = parsedWidth;
 			_hdmiOutResolutionHeight = parsedHeight;
-
-			Debug.LogMessage(
-				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{DeviceKey}] HDMI out resolution -> '{1}' (endpointRef='{2}')",
-				this,
-				Key,
-				_hdmiOutResolution ?? "unknown",
-				ApiEndpointReference);
 		}
 
 		public bool TryGetCustomMultiviewLayout(string layoutKey, out NhdCustomMultiviewLayoutProperties layout)
@@ -395,7 +378,6 @@ namespace PepperDash.Essentials.Plugin
 				.ToList();
 
 			var normalizedTileCount = normalizedTiles.Count;
-			var changed = _multiStreamMode != mode || ActiveTileCount != normalizedTileCount;
 
 			_multiStreamMode = mode;
 			ActiveTileCount = normalizedTileCount;
@@ -409,18 +391,6 @@ namespace PepperDash.Essentials.Plugin
 			RefreshActiveMultiviewAudioSourceReference();
 
 			MultiviewStateLastRefreshUtc = DateTime.UtcNow;
-
-			if (changed)
-			{
-				Debug.LogMessage(
-					Serilog.Events.LogEventLevel.Information,
-					"$$$$$$$$$$ [{DeviceKey}] Multiview state updated: mode='{Mode}', activeTiles={ActiveTiles}, maxTiles={MaxTiles}",
-					this,
-					Key,
-					mode,
-					normalizedTileCount,
-					MaxStreamCount);
-			}
 		}
 
 		public bool TryGetActiveMultiviewTile(int tileReference, out NhdMultiviewTileState tile)
@@ -452,14 +422,6 @@ namespace PepperDash.Essentials.Plugin
 				WindowReference = normalizedWindow,
 				SeparateSourceReference = null,
 			};
-
-			Debug.LogMessage(
-				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{DeviceKey}] Saved preset audio setting layout='{1}', mode='window', target='{2}'",
-				this,
-				Key,
-				normalizedLayout,
-				normalizedWindow.HasValue ? normalizedWindow.Value.ToString() : "null");
 		}
 
 		public void SetPresetLayoutAudioSeparateSource(string layoutName, string sourceReference)
@@ -476,14 +438,6 @@ namespace PepperDash.Essentials.Plugin
 				WindowReference = null,
 				SeparateSourceReference = normalizedSource,
 			};
-
-			Debug.LogMessage(
-				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{DeviceKey}] Saved preset audio setting layout='{1}', mode='separate', target='{2}'",
-				this,
-				Key,
-				normalizedLayout,
-				normalizedSource ?? "null");
 		}
 
 		public void ApplyPresetLayoutAudioSetting(string layoutName)
@@ -520,15 +474,6 @@ namespace PepperDash.Essentials.Plugin
 			_activeMultiviewAudioWindow = normalizedWindow;
 			_activeMultiviewAudioSeparateSourceReference = mode == NhdMultiviewAudioMode.Separate ? normalizedSource : null;
 			RefreshActiveMultiviewAudioSourceReference();
-
-			Debug.LogMessage(
-				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{DeviceKey}] Active multiview audio setting mode='{1}', window='{2}', separateSource='{3}'",
-				this,
-				Key,
-				_activeMultiviewAudioMode,
-				_activeMultiviewAudioWindow.HasValue ? _activeMultiviewAudioWindow.Value.ToString() : "null",
-				_activeMultiviewAudioSeparateSourceReference ?? "null");
 		}
 
 		private int? NormalizeAudioWindow(int? windowReference)
@@ -565,16 +510,6 @@ namespace PepperDash.Essentials.Plugin
 				return;
 
 			_activeMultiviewAudioSourceReference = newSourceReference;
-
-			Debug.LogMessage(
-				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{DeviceKey}] Active multiview audio source set to '{1}' (mode='{2}', window='{3}', separateSource='{4}')",
-				this,
-				Key,
-				_activeMultiviewAudioSourceReference ?? "null",
-				_activeMultiviewAudioMode,
-				_activeMultiviewAudioWindow.HasValue ? _activeMultiviewAudioWindow.Value.ToString() : "null",
-				_activeMultiviewAudioSeparateSourceReference ?? "null");
 		}
 
 		public void SetAvailablePresetMultiviewLayouts(IEnumerable<string> layoutNames)
@@ -602,13 +537,6 @@ namespace PepperDash.Essentials.Plugin
 				_presetLayoutGeometrySignatures.Remove(staleLayout);
 				_presetLayoutAudioSettings.Remove(staleLayout);
 			}
-
-			Debug.LogMessage(
-				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{DeviceKey}] Available multiview preset layouts updated: count={1}",
-				this,
-				Key,
-				_availablePresetMultiviewLayouts.Count);
 		}
 
 		public bool IsKnownPresetMultiviewLayout(string layoutName)
@@ -633,13 +561,6 @@ namespace PepperDash.Essentials.Plugin
 			var normalized = layoutName.Trim();
 			_presetLayoutGeometrySignatures[normalized] = _activeMultiviewGeometrySignature;
 
-			Debug.LogMessage(
-				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{DeviceKey}] Captured geometry signature for layout '{1}'",
-				this,
-				Key,
-				normalized);
-
 			return true;
 		}
 
@@ -649,12 +570,6 @@ namespace PepperDash.Essentials.Plugin
 				return;
 
 			_presetLayoutGeometrySignatures.Clear();
-
-			Debug.LogMessage(
-				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{DeviceKey}] Cleared learned multiview preset layout geometry signatures",
-				this,
-				Key);
 		}
 
 		public bool TryIdentifyPresetLayoutByActiveGeometry(out string layoutName)
@@ -776,13 +691,6 @@ namespace PepperDash.Essentials.Plugin
 			ActivePresetMultiviewLayoutName = normalized;
 			ActivePresetMultiviewLayoutInferred = inferred;
 			ActivePresetMultiviewLayoutLastUpdateUtc = DateTime.UtcNow;
-			Debug.LogMessage(
-				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{DeviceKey}] Active multiview preset layout set to '{Layout}' (inferred={Inferred})",
-				this,
-				Key,
-				ActivePresetMultiviewLayoutName ?? "null",
-				ActivePresetMultiviewLayoutInferred);
 		}
 
 		public void SetActiveCustomMultiviewLayout(string layoutKey, bool inferred = false)
@@ -800,14 +708,6 @@ namespace PepperDash.Essentials.Plugin
 			ActiveCustomMultiviewLayoutKey = normalized;
 			ActiveCustomMultiviewLayoutInferred = inferred;
 			ActiveCustomMultiviewLayoutLastUpdateUtc = DateTime.UtcNow;
-
-			Debug.LogMessage(
-				Serilog.Events.LogEventLevel.Information,
-				"$$$$$$$$$$ [{DeviceKey}] Active multiview custom layout set to '{LayoutKey}' (inferred={Inferred})",
-				this,
-				Key,
-				ActiveCustomMultiviewLayoutKey ?? "null",
-				ActiveCustomMultiviewLayoutInferred);
 		}
 
 		private IEnumerable<NhdCustomMultiviewLayoutProperties> GetAllCustomMultiviewLayoutsByPrecedence()
