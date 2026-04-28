@@ -15,7 +15,6 @@ namespace PepperDash.Essentials.Plugin
 		public NhdCtlSessionManager SessionManager { get; private set; }
 		public string ApiUsername => string.IsNullOrWhiteSpace(Config?.ApiUsername) ? null : Config.ApiUsername.Trim();
 		public string ApiPassword => Config?.ApiPassword ?? string.Empty;
-		public bool EnableTelnetLoginAutomation => Config?.EnableTelnetLoginAutomation ?? false;
 
 		protected override bool AutoStartCommunicationMonitorInBase => false;
 

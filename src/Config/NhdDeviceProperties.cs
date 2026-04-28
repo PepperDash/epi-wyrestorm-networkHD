@@ -24,12 +24,12 @@ namespace PepperDash.Essentials.Plugin
             }
         }
 
-        public int DeviceId { get; set; }
+        public int MatrixInputSlot { get; set; }
+        public int MatrixOutputSlot { get; set; }
         public string Alias { get; set; }
         public Nhd232Properties Rs232 { get; set; }
         public string ApiUsername { get; set; }
         public string ApiPassword { get; set; }
-        public bool? EnableTelnetLoginAutomation { get; set; }
         [JsonConverter(typeof(StringEnumConverter))]
         public NhdDeviceMode? Mode { get; set; }
         [JsonConverter(typeof(StringEnumConverter))]

@@ -199,7 +199,6 @@ namespace PepperDash.Essentials.Plugin.Comms
         private DateTime? _lastLoginFailureHandledUtc;
         private DateTime? _lastStandaloneUserPromptSeenUtc;
         private DateTime? _lastStandalonePasswordPromptSeenUtc;
-        private bool _loginAutomationDisabledNoticeLogged;
         private bool _isSessionReady;
         private bool _bootstrapPending;
         private bool _telnetAwaitingCommand;
@@ -280,7 +279,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             }
         }
 
-        public bool TryRouteMultiviewTile(IKeyed requestedBy, NhdBaseDevice txEndpoint, NhdBaseDevice rxEndpoint, string layoutName, int tileReference)
+        public bool TryRouteMVTile(IKeyed requestedBy, NhdBaseDevice txEndpoint, NhdBaseDevice rxEndpoint, string layoutName, int tileReference)
         {
             var source = requestedBy ?? _ctl;
 
@@ -312,7 +311,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return false;
             }
 
-            if (rxEndpoint.AvailablePresetMultiviewLayouts.Count > 0 && !rxEndpoint.IsKnownPresetMultiviewLayout(trimmedLayout))
+            if (rxEndpoint.AvailablePresetMultiviewLayouts.Count > 0 && !rxEndpoint.IsKnownPresetMVLayout(trimmedLayout))
             {
                 Debug.LogError("[{0}] Multiview preset layout '{1}' is not available on endpoint '{2}'", source.Key, trimmedLayout, rxEndpoint.Key);
                 return false;
@@ -357,7 +356,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             return false;
         }
 
-        public bool TryActivateMultiviewLayout(IKeyed requestedBy, NhdBaseDevice rxEndpoint, string layoutName)
+        public bool TryActivateMVLayout(IKeyed requestedBy, NhdBaseDevice rxEndpoint, string layoutName)
         {
             var source = requestedBy ?? _ctl;
 
@@ -381,7 +380,7 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             var trimmedLayout = layoutName.Trim();
 
-            if (rxEndpoint.AvailablePresetMultiviewLayouts.Count > 0 && !rxEndpoint.IsKnownPresetMultiviewLayout(trimmedLayout))
+            if (rxEndpoint.AvailablePresetMultiviewLayouts.Count > 0 && !rxEndpoint.IsKnownPresetMVLayout(trimmedLayout))
             {
                 Debug.LogError("[{0}] Multiview preset layout '{1}' is not available on endpoint '{2}'", source.Key, trimmedLayout, rxEndpoint.Key);
                 return false;
@@ -423,7 +422,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return false;
             }
 
-            if (!rxEndpoint.TryGetCustomMultiviewLayout(layoutKey, out var layout))
+            if (!rxEndpoint.TryGetCustomMVLayout(layoutKey, out var layout))
             {
                 Debug.LogError("[{0}] Custom multiview layout '{1}' is not defined for endpoint '{2}'", source.Key, layoutKey, rxEndpoint.Key);
                 return false;
@@ -477,7 +476,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return false;
             }
 
-            if (!rxEndpoint.TryGetMultiviewPreset(presetKey, out var preset))
+            if (!rxEndpoint.TryGetMVPreset(presetKey, out var preset))
             {
                 Debug.LogError("[{0}] Multiview preset '{1}' is not defined for endpoint '{2}'", source.Key, presetKey, rxEndpoint.Key);
                 return false;
@@ -545,7 +544,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             }
         }
 
-        public bool TryFullscreenMultiviewTile(IKeyed requestedBy, NhdBaseDevice rxEndpoint, int sourceTileReference)
+        public bool TryFullscreenMVTile(IKeyed requestedBy, NhdBaseDevice rxEndpoint, int sourceTileReference)
         {
             var source = requestedBy ?? _ctl;
 
@@ -567,7 +566,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return false;
             }
 
-            if (!rxEndpoint.IsMultiviewStateFresh(MultiviewStateFreshness))
+            if (!rxEndpoint.IsMVStateFresh(MultiviewStateFreshness))
             {
                 _pendingFullscreenRequests[rxEndpoint.Key] = new PendingFullscreenRequest
                 {
@@ -599,14 +598,14 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return false;
             }
 
-            if (!rxEndpoint.TryGetActiveMultiviewTile(sourceTileReference, out var sourceTile) || string.IsNullOrWhiteSpace(sourceTile.SourceReference))
+            if (!rxEndpoint.TryGetActiveMVTile(sourceTileReference, out var sourceTile) || string.IsNullOrWhiteSpace(sourceTile.SourceReference))
             {
                 Debug.LogError("[{0}] Cannot fullscreen tile {1} on endpoint '{2}' because source is unknown", source.Key, sourceTileReference, rxEndpoint.Key);
                 return false;
             }
 
             const string fullscreenLayout = "1-1";
-            if (rxEndpoint.AvailablePresetMultiviewLayouts.Count > 0 && !rxEndpoint.IsKnownPresetMultiviewLayout(fullscreenLayout))
+            if (rxEndpoint.AvailablePresetMultiviewLayouts.Count > 0 && !rxEndpoint.IsKnownPresetMVLayout(fullscreenLayout))
             {
                 Debug.LogError("[{0}] Fullscreen layout '{1}' is not available on endpoint '{2}'", source.Key, fullscreenLayout, rxEndpoint.Key);
                 return false;
@@ -625,7 +624,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             return NhdApiCommandSender.TrySend(source, $"mscene active {rxEndpoint.ApiEndpointReference} {fullscreenLayout}");
         }
 
-        public bool TryReturnFromMultiviewFullscreen(IKeyed requestedBy, NhdBaseDevice rxEndpoint)
+        public bool TryReturnFromMVFullscreen(IKeyed requestedBy, NhdBaseDevice rxEndpoint)
         {
             var source = requestedBy ?? _ctl;
 
@@ -635,7 +634,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return false;
             }
 
-            if (!TryGetMultiviewFullscreenReturnLayout(rxEndpoint, out var returnLayout))
+            if (!TryGetMVFullscreenReturnLayout(rxEndpoint, out var returnLayout))
             {
                 Debug.LogError("[{0}] No fullscreen return layout is available for endpoint '{1}'", source.Key, rxEndpoint.Key);
                 return false;
@@ -652,7 +651,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             return sent;
         }
 
-        public bool TryGetMultiviewFullscreenReturnLayout(NhdBaseDevice rxEndpoint, out string layoutName)
+        public bool TryGetMVFullscreenReturnLayout(NhdBaseDevice rxEndpoint, out string layoutName)
         {
             layoutName = null;
 
@@ -669,7 +668,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             return true;
         }
 
-        public bool TryProbeAndLearnMultiviewLayouts(IKeyed requestedBy, NhdBaseDevice rxEndpoint)
+        public bool TryProbeAndLearnMVLayouts(IKeyed requestedBy, NhdBaseDevice rxEndpoint)
         {
             var source = requestedBy ?? _ctl;
 
@@ -723,7 +722,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             return true;
         }
 
-        public bool TryReprobeAndLearnMultiviewLayouts(IKeyed requestedBy, NhdBaseDevice rxEndpoint)
+        public bool TryReprobeAndLearnMVLayouts(IKeyed requestedBy, NhdBaseDevice rxEndpoint)
         {
             var source = requestedBy ?? _ctl;
 
@@ -739,7 +738,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             _startupProbeCompleted.Remove(rxEndpoint.Key);
             rxEndpoint.ClearLearnedPresetLayoutGeometrySignatures();
 
-            return TryProbeAndLearnMultiviewLayouts(source, rxEndpoint);
+            return TryProbeAndLearnMVLayouts(source, rxEndpoint);
         }
 
         private void HandleLineReceived(object sender, GenericCommMethodReceiveTextArgs args)
@@ -959,16 +958,6 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (!sawUserPrompt && !sawPasswordPrompt)
                 return false;
 
-            if (!_ctl.EnableTelnetLoginAutomation)
-            {
-                if (!_loginAutomationDisabledNoticeLogged)
-                {
-                    _loginAutomationDisabledNoticeLogged = true;
-                }
-
-                return true;
-            }
-
             var now = DateTime.UtcNow;
             var username = _ctl.ApiUsername ?? string.Empty;
             var password = _ctl.ApiPassword ?? string.Empty;
@@ -1022,12 +1011,9 @@ namespace PepperDash.Essentials.Plugin.Comms
             _lastLoginFailureHandledUtc = now;
             ArmBootstrap(reason);
 
-            if (_ctl.EnableTelnetLoginAutomation)
-            {
-                Debug.LogError(
-                    "[{0}] CTL login failed. Verify configured API username/password.",
-                    _ctl.Key);
-            }
+            Debug.LogError(
+                "[{0}] CTL login failed. Verify configured API username/password.",
+                _ctl.Key);
         }
 
         private static bool ContainsStandalonePrompt(string text, string promptToken)
@@ -1403,13 +1389,13 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             if (success)
             {
-                endpoint.SetActivePresetMultiviewLayout(layout, inferred: false);
+                endpoint.SetActivePresetMVLayout(layout, inferred: false);
                 endpoint.ApplyPresetLayoutAudioSetting(layout);
                 _pendingLayoutGeometryCapture[endpoint.Key] = layout;
 
                 if (NhdBaseDevice.TryInferPresetLayoutShape(layout, out var inferredTileCount, out var inferredMode))
                 {
-                    endpoint.SetMultiviewRuntimeState(inferredMode, inferredTileCount);
+                    endpoint.SetMVRuntimeState(inferredMode, inferredTileCount);
                 }
 
                 RequestMultiviewState(endpoint, force: true);
@@ -1474,13 +1460,13 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             if (success)
             {
-                endpoint.SetActivePresetMultiviewLayout(layout, inferred: false);
+                endpoint.SetActivePresetMVLayout(layout, inferred: false);
                 endpoint.ApplyPresetLayoutAudioSetting(layout);
                 _pendingLayoutGeometryCapture[endpoint.Key] = layout;
 
                 if (NhdBaseDevice.TryInferPresetLayoutShape(layout, out var inferredTileCount, out var inferredMode))
                 {
-                    endpoint.SetMultiviewRuntimeState(inferredMode, inferredTileCount);
+                    endpoint.SetMVRuntimeState(inferredMode, inferredTileCount);
                 }
 
                 RequestMultiviewState(endpoint, force: true);
@@ -1571,7 +1557,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             var endpoint = ResolveEndpoint(reference);
             if (success && endpoint != null)
             {
-                endpoint.SetActiveMultiviewAudioSeparateSource(source);
+                endpoint.SetActiveMVAudioSeparateSource(source);
                 RequestMultiviewState(endpoint, force: true);
             }
 
@@ -2211,7 +2197,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            endpoint.SetAvailablePresetMultiviewLayouts(layouts);
+            endpoint.SetAvailablePresetMVLayouts(layouts);
             TryStartStartupProbeIfReady(endpoint);
 
             return true;
@@ -2316,7 +2302,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (_pendingMviewEndpoint == null)
                 return;
 
-            _pendingMviewEndpoint.SetMultiviewRuntimeState(_pendingMviewMode, _pendingMviewTiles);
+            _pendingMviewEndpoint.SetMVRuntimeState(_pendingMviewMode, _pendingMviewTiles);
             CaptureOrInferActiveLayout(_pendingMviewEndpoint);
             TryDispatchPendingCustomWindowAudioForEndpoint(_pendingMviewEndpoint);
             TryDispatchPendingTileRouteForEndpoint(_pendingMviewEndpoint);
@@ -2359,12 +2345,12 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             if (endpoint.TryIdentifyPresetLayoutByActiveGeometry(out var inferredLayout))
             {
-                endpoint.SetActivePresetMultiviewLayout(inferredLayout, inferred: true);
+                endpoint.SetActivePresetMVLayout(inferredLayout, inferred: true);
             }
 
             if (endpoint.TryIdentifyCustomLayoutByActiveGeometry(out var inferredCustomLayout))
             {
-                endpoint.SetActiveCustomMultiviewLayout(inferredCustomLayout, inferred: true);
+                endpoint.SetActiveCustomMVLayout(inferredCustomLayout, inferred: true);
             }
         }
 
@@ -2402,7 +2388,7 @@ namespace PepperDash.Essentials.Plugin.Comms
 
         private static bool CanRouteTileNow(NhdBaseDevice rxEndpoint, int tileReference)
         {
-            if (!rxEndpoint.IsMultiviewStateFresh(MultiviewStateFreshness))
+            if (!rxEndpoint.IsMVStateFresh(MultiviewStateFreshness))
                 return false;
 
             if (rxEndpoint.ActiveTileCount <= 0)
@@ -2538,7 +2524,7 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             if (preset.LayoutSource == NhdMultiviewPresetLayoutSource.Config)
             {
-                if (!rxEndpoint.TryGetCustomMultiviewLayout(normalizedLayout, out _))
+                if (!rxEndpoint.TryGetCustomMVLayout(normalizedLayout, out _))
                 {
                     validationError = string.Format(CultureInfo.InvariantCulture, "config layout '{0}' is not defined in CustomMultiviewLayouts", normalizedLayout);
                     return false;
@@ -2640,7 +2626,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             string layoutName,
             IReadOnlyDictionary<int, string> sourceReferencesByWindow)
         {
-            if (!TryActivateMultiviewLayout(source, rxEndpoint, layoutName))
+            if (!TryActivateMVLayout(source, rxEndpoint, layoutName))
                 return false;
 
             var tileCount = 0;
@@ -2699,7 +2685,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (preset.AudioMode.Value == NhdMultiviewAudioMode.Window)
             {
                 var audioWindow = preset.AudioWindowReference.Value;
-                rxEndpoint.SetActiveMultiviewAudioWindow(audioWindow);
+                rxEndpoint.SetActiveMVAudioWindow(audioWindow);
 
                 string windowSourceRef = null;
                 if (sourceReferencesByWindow != null
@@ -2708,7 +2694,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 {
                     windowSourceRef = mappedWindowSource.Trim();
                 }
-                else if (rxEndpoint.TryGetActiveMultiviewTile(audioWindow, out var tile)
+                else if (rxEndpoint.TryGetActiveMVTile(audioWindow, out var tile)
                     && tile != null
                     && !string.IsNullOrWhiteSpace(tile.SourceReference))
                 {
@@ -2726,7 +2712,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                     if (!NhdApiCommandSender.TrySend(source, audioCommand))
                         return false;
 
-                    rxEndpoint.SetActiveMultiviewAudioSeparateSource(windowSourceRef);
+                    rxEndpoint.SetActiveMVAudioSeparateSource(windowSourceRef);
                 }
 
                 return true;
@@ -2748,7 +2734,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 if (!NhdApiCommandSender.TrySend(source, command))
                     return false;
 
-                rxEndpoint.SetActiveMultiviewAudioSeparateSource(audioSourceRef);
+                rxEndpoint.SetActiveMVAudioSeparateSource(audioSourceRef);
                 return true;
             }
 
@@ -2810,7 +2796,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (layout.AudioMode.Value == NhdMultiviewAudioMode.Window)
             {
                 var windowReference = layout.AudioWindowReference.Value;
-                rxEndpoint.SetActiveMultiviewAudioWindow(windowReference);
+                rxEndpoint.SetActiveMVAudioWindow(windowReference);
                 _pendingCustomWindowAudioApplies[rxEndpoint.Key] = windowReference;
 
                 TryDispatchPendingCustomWindowAudioForEndpoint(rxEndpoint);
@@ -2825,7 +2811,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                     ? rxEndpoint.ActiveMultiviewAudioSourceReference
                     : rxEndpoint.ActiveMultiviewAudioSeparateSourceReference;
 
-                rxEndpoint.SetActiveMultiviewAudioSeparateSource(separateSource);
+                rxEndpoint.SetActiveMVAudioSeparateSource(separateSource);
 
                 if (string.IsNullOrWhiteSpace(separateSource))
                 {
@@ -2865,7 +2851,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (!_pendingCustomWindowAudioApplies.TryGetValue(rxEndpoint.Key, out var windowReference))
                 return;
 
-            if (!rxEndpoint.TryGetActiveMultiviewTile(windowReference, out var tile)
+            if (!rxEndpoint.TryGetActiveMVTile(windowReference, out var tile)
                 || tile == null
                 || string.IsNullOrWhiteSpace(tile.SourceReference))
             {
@@ -2882,7 +2868,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (!NhdApiCommandSender.TrySend(_ctl, command))
                 return;
 
-            rxEndpoint.SetActiveMultiviewAudioSeparateSource(sourceReference);
+            rxEndpoint.SetActiveMVAudioSeparateSource(sourceReference);
             _pendingCustomWindowAudioApplies.Remove(rxEndpoint.Key);
         }
 
@@ -2915,7 +2901,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (endpoint == null || !endpoint.SupportsMultiview)
                 return;
 
-            if (!force && endpoint.IsMultiviewStateFresh(MultiviewRefreshThrottle))
+            if (!force && endpoint.IsMVStateFresh(MultiviewRefreshThrottle))
                 return;
 
             var sender = source ?? _ctl;
@@ -3036,13 +3022,13 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (endpoint.AvailablePresetMultiviewLayouts.Count == 0)
                 return;
 
-            if (!endpoint.IsMultiviewStateFresh(MultiviewStateFreshness))
+            if (!endpoint.IsMVStateFresh(MultiviewStateFreshness))
             {
                 RequestMultiviewState(endpoint, force: true);
                 return;
             }
 
-            if (TryProbeAndLearnMultiviewLayouts(_ctl, endpoint))
+            if (TryProbeAndLearnMVLayouts(_ctl, endpoint))
             {
                 _startupProbeCompleted.Add(endpoint.Key);
             }
@@ -3124,7 +3110,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             var parts = new List<string>(endpoint.ActiveTileCount);
             for (var i = 1; i <= endpoint.ActiveTileCount; i++)
             {
-                if (!endpoint.TryGetActiveMultiviewTile(i, out var tile) || tile == null)
+                if (!endpoint.TryGetActiveMVTile(i, out var tile) || tile == null)
                     return null;
 
                 parts.Add(string.Format("{0}:{1}_{2}_{3}_{4}", tile.TileNumber, tile.X, tile.Y, tile.Width, tile.Height));
@@ -3168,7 +3154,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return;
             }
 
-            if (!rxEndpoint.IsMultiviewStateFresh(MultiviewStateFreshness))
+            if (!rxEndpoint.IsMVStateFresh(MultiviewStateFreshness))
                 return;
 
             if (pending.TileReference > rxEndpoint.ActiveTileCount)
@@ -3225,7 +3211,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return;
             }
 
-            if (!rxEndpoint.IsMultiviewStateFresh(MultiviewStateFreshness))
+            if (!rxEndpoint.IsMVStateFresh(MultiviewStateFreshness))
                 return;
 
             if (rxEndpoint.ActiveTileCount <= 1)
@@ -3265,7 +3251,7 @@ namespace PepperDash.Essentials.Plugin.Comms
                 return;
             }
 
-            if (!rxEndpoint.TryGetActiveMultiviewTile(pending.SourceTileReference, out var sourceTile) || string.IsNullOrWhiteSpace(sourceTile.SourceReference))
+            if (!rxEndpoint.TryGetActiveMVTile(pending.SourceTileReference, out var sourceTile) || string.IsNullOrWhiteSpace(sourceTile.SourceReference))
             {
                 _pendingFullscreenRequests.Remove(rxEndpoint.Key);
                 Debug.LogMessage(
@@ -3278,7 +3264,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             }
 
             const string fullscreenLayout = "1-1";
-            if (rxEndpoint.AvailablePresetMultiviewLayouts.Count > 0 && !rxEndpoint.IsKnownPresetMultiviewLayout(fullscreenLayout))
+            if (rxEndpoint.AvailablePresetMultiviewLayouts.Count > 0 && !rxEndpoint.IsKnownPresetMVLayout(fullscreenLayout))
             {
                 _pendingFullscreenRequests.Remove(rxEndpoint.Key);
                 Debug.LogMessage(

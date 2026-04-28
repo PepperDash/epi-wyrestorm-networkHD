@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -54,7 +54,8 @@ namespace PepperDash.Essentials.Plugin
 		{
 			Config = config ?? new NhdDeviceProperties();
 			ModelName = modelName;
-			DeviceId = Config.DeviceId;
+			MatrixInputSlot = Config.MatrixInputSlot;
+			MatrixOutputSlot = Config.MatrixOutputSlot;
 			IsOnline = new BoolFeedback("IsOnline", () => _online);
 			InputSyncDetected = new BoolFeedback("InputSyncDetected", () => _inputSyncDetected);
 		}
@@ -62,7 +63,8 @@ namespace PepperDash.Essentials.Plugin
 		protected NhdDeviceProperties Config { get; private set; }
 		public StatusMonitorBase CommunicationMonitor { get; protected set; }
 		public string ModelName { get; private set; }
-		public int DeviceId { get; private set; }
+		public int MatrixInputSlot { get; private set; }
+		public int MatrixOutputSlot { get; private set; }
 		public string ConfiguredAlias => string.IsNullOrWhiteSpace(Config.Alias) ? null : Config.Alias.Trim();
 		public string Hostname { get; private set; }
 		public bool OnlineState => _online;
@@ -268,7 +270,7 @@ namespace PepperDash.Essentials.Plugin
 			_hdmiOutResolutionHeight = parsedHeight;
 		}
 
-		public bool TryGetCustomMultiviewLayout(string layoutKey, out NhdCustomMultiviewLayoutProperties layout)
+		public bool TryGetCustomMVLayout(string layoutKey, out NhdCustomMultiviewLayoutProperties layout)
 		{
 			layout = null;
 
@@ -297,7 +299,7 @@ namespace PepperDash.Essentials.Plugin
 			return layout != null;
 		}
 
-		public bool TryGetMultiviewPreset(string presetKey, out NhdMultiviewPresetProperties preset)
+		public bool TryGetMVPreset(string presetKey, out NhdMultiviewPresetProperties preset)
 		{
 			preset = null;
 
@@ -344,7 +346,7 @@ namespace PepperDash.Essentials.Plugin
 			return ctl.Config.MultiviewPresets;
 		}
 
-		public bool IsMultiviewStateFresh(TimeSpan maxAge)
+		public bool IsMVStateFresh(TimeSpan maxAge)
 		{
 			if (!SupportsMultiview || !MultiviewStateLastRefreshUtc.HasValue)
 				return false;
@@ -352,7 +354,7 @@ namespace PepperDash.Essentials.Plugin
 			return DateTime.UtcNow - MultiviewStateLastRefreshUtc.Value <= maxAge;
 		}
 
-		public void SetMultiviewRuntimeState(NhdMultiStreamMode mode, int activeTileCount)
+		public void SetMVRuntimeState(NhdMultiStreamMode mode, int activeTileCount)
 		{
 			var normalizedCount = Math.Max(0, Math.Min(activeTileCount, MaxStreamCount));
 			var placeholderTiles = new List<NhdMultiviewTileState>(normalizedCount);
@@ -362,10 +364,10 @@ namespace PepperDash.Essentials.Plugin
 				placeholderTiles.Add(NhdMultiviewTileState.CreatePlaceholder(i));
 			}
 
-			SetMultiviewRuntimeState(mode, placeholderTiles);
+			SetMVRuntimeState(mode, placeholderTiles);
 		}
 
-		public void SetMultiviewRuntimeState(NhdMultiStreamMode mode, IReadOnlyList<NhdMultiviewTileState> tiles)
+		public void SetMVRuntimeState(NhdMultiStreamMode mode, IReadOnlyList<NhdMultiviewTileState> tiles)
 		{
 			if (!SupportsMultiview)
 				return;
@@ -393,17 +395,17 @@ namespace PepperDash.Essentials.Plugin
 			MultiviewStateLastRefreshUtc = DateTime.UtcNow;
 		}
 
-		public bool TryGetActiveMultiviewTile(int tileReference, out NhdMultiviewTileState tile)
+		public bool TryGetActiveMVTile(int tileReference, out NhdMultiviewTileState tile)
 		{
 			return _activeMultiviewTiles.TryGetValue(tileReference, out tile);
 		}
 
-		public void SetActiveMultiviewAudioWindow(int? windowReference)
+		public void SetActiveMVAudioWindow(int? windowReference)
 		{
 			SetActiveMultiviewAudioSelection(NhdMultiviewAudioMode.Window, windowReference, null);
 		}
 
-		public void SetActiveMultiviewAudioSeparateSource(string sourceReference)
+		public void SetActiveMVAudioSeparateSource(string sourceReference)
 		{
 			SetActiveMultiviewAudioSelection(NhdMultiviewAudioMode.Separate, null, sourceReference);
 		}
@@ -512,7 +514,7 @@ namespace PepperDash.Essentials.Plugin
 			_activeMultiviewAudioSourceReference = newSourceReference;
 		}
 
-		public void SetAvailablePresetMultiviewLayouts(IEnumerable<string> layoutNames)
+		public void SetAvailablePresetMVLayouts(IEnumerable<string> layoutNames)
 		{
 			if (!SupportsMultiview)
 				return;
@@ -539,7 +541,7 @@ namespace PepperDash.Essentials.Plugin
 			}
 		}
 
-		public bool IsKnownPresetMultiviewLayout(string layoutName)
+		public bool IsKnownPresetMVLayout(string layoutName)
 		{
 			if (string.IsNullOrWhiteSpace(layoutName))
 				return false;
@@ -677,7 +679,7 @@ namespace PepperDash.Essentials.Plugin
 			return true;
 		}
 
-		public void SetActivePresetMultiviewLayout(string layoutName, bool inferred = false)
+		public void SetActivePresetMVLayout(string layoutName, bool inferred = false)
 		{
 			if (!SupportsMultiview)
 				return;
@@ -693,7 +695,7 @@ namespace PepperDash.Essentials.Plugin
 			ActivePresetMultiviewLayoutLastUpdateUtc = DateTime.UtcNow;
 		}
 
-		public void SetActiveCustomMultiviewLayout(string layoutKey, bool inferred = false)
+		public void SetActiveCustomMVLayout(string layoutKey, bool inferred = false)
 		{
 			if (!SupportsMultiview)
 				return;
@@ -816,7 +818,7 @@ namespace PepperDash.Essentials.Plugin
 			return Math.Max(1, (int)Math.Round(scaled, MidpointRounding.AwayFromZero));
 		}
 
-		public bool ReprobeMultiviewLayouts()
+		public bool ReprobeMVLayouts()
 		{
 			if (!SupportsMultiview || IsTransmitter)
 			{
@@ -831,7 +833,7 @@ namespace PepperDash.Essentials.Plugin
 				return false;
 			}
 
-			return ctl.SessionManager.TryReprobeAndLearnMultiviewLayouts(this, this);
+			return ctl.SessionManager.TryReprobeAndLearnMVLayouts(this, this);
 		}
 
 		public bool ApplyCustomMVLayout(string layoutKey)
@@ -888,7 +890,7 @@ namespace PepperDash.Essentials.Plugin
 			return ctl.SessionManager.TryApplyMVPreset(this, this, presetKey);
 		}
 
-		public bool FullscreenMultiviewTile(int sourceTileReference)
+		public bool FullscreenMVTile(int sourceTileReference)
 		{
 			if (!SupportsMultiview || IsTransmitter)
 			{
@@ -903,10 +905,10 @@ namespace PepperDash.Essentials.Plugin
 				return false;
 			}
 
-			return ctl.SessionManager.TryFullscreenMultiviewTile(this, this, sourceTileReference);
+			return ctl.SessionManager.TryFullscreenMVTile(this, this, sourceTileReference);
 		}
 
-		public bool ReturnFromMultiviewFullscreen()
+		public bool ReturnFromMVFullscreen()
 		{
 			if (!SupportsMultiview || IsTransmitter)
 			{
@@ -921,10 +923,10 @@ namespace PepperDash.Essentials.Plugin
 				return false;
 			}
 
-			return ctl.SessionManager.TryReturnFromMultiviewFullscreen(this, this);
+			return ctl.SessionManager.TryReturnFromMVFullscreen(this, this);
 		}
 
-		public bool TryGetMultiviewFullscreenReturnLayout(out string layoutName)
+		public bool TryGetMVFullscreenReturnLayout(out string layoutName)
 		{
 			layoutName = null;
 
@@ -933,7 +935,7 @@ namespace PepperDash.Essentials.Plugin
 
 			var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
 			return ctl?.SessionManager != null
-				&& ctl.SessionManager.TryGetMultiviewFullscreenReturnLayout(this, out layoutName);
+				&& ctl.SessionManager.TryGetMVFullscreenReturnLayout(this, out layoutName);
 		}
 
 		private static string BuildGeometrySignature(IEnumerable<NhdMultiviewTileState> tiles)

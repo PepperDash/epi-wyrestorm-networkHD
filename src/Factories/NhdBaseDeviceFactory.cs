@@ -8,7 +8,7 @@ namespace PepperDash.Essentials.Plugin
 {
     public abstract class NhdBaseDeviceFactory<T> : EssentialsPluginDeviceFactory<T> where T : NhdBaseDevice
     {
-        public const string MinimumEssentialsVersion = "2.12.1";
+        public const string MinimumEssentialsVersion = "3.0.0";
 
         static NhdBaseDeviceFactory()
         {

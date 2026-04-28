@@ -124,7 +124,24 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
 
     public void ExecuteNumericSwitch(ushort input, ushort output, eRoutingSignalType type)
     {
-        throw new NotImplementedException("ExecuteNumericSwitch");
+        RouteBySlot(input, output, type);
+    }
+
+    public void RouteBySlot(int inputSlot, int outputSlot, eRoutingSignalType type)
+    {
+        if (!TryResolveInputSlot(inputSlot, out var inputSlotObject))
+        {
+            this.LogError("Unable to find input with matrixInputSlot {slot}", inputSlot);
+            return;
+        }
+
+        if (!TryResolveOutputSlot(outputSlot, out var outputSlotObject))
+        {
+            this.LogError("Unable to find output with matrixOutputSlot {slot}", outputSlot);
+            return;
+        }
+
+        ExecuteSwitch(inputSlotObject, outputSlotObject, type);
     }
 
     public bool TrySetTrackedMatrixRoute(string txEndpointKey, string rxEndpointKey, eRoutingSignalType signalType)
@@ -197,6 +214,60 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         return InputSlots.TryGetValue("none", out inputSlot);
     }
 
+    private bool TryResolveInputSlot(int matrixInputSlot, out IRoutingInputSlot inputSlot)
+    {
+        inputSlot = null;
+
+        if (matrixInputSlot <= 0)
+            return false;
+
+        var matches = InputSlots.Values
+            .OfType<NhdMatrixInput>()
+            .Where(slot => slot.SlotNumber == matrixInputSlot)
+            .Cast<IRoutingInputSlot>()
+            .ToList();
+
+        if (matches.Count == 0)
+            return false;
+
+        if (matches.Count > 1)
+        {
+            this.LogError("Multiple inputs found with matrixInputSlot {slot}", matrixInputSlot);
+            return false;
+        }
+
+        inputSlot = matches[0];
+        return true;
+    }
+
+    private bool TryResolveOutputSlot(int matrixOutputSlot, out NhdMatrixOutput outputSlot)
+    {
+        outputSlot = null;
+
+        if (matrixOutputSlot <= 0)
+            return false;
+
+        var matches = OutputSlots.Values
+            .OfType<NhdMatrixOutput>()
+            .Where(slot => slot.SlotNumber == matrixOutputSlot)
+            .ToList();
+
+        if (matches.Count == 0)
+            return false;
+
+        if (matches.Count > 1)
+        {
+            this.LogError("Multiple outputs found with matrixOutputSlot {slot}", matrixOutputSlot);
+            return false;
+        }
+
+        if (!matches[0].SupportsMatrixSwitching)
+            return false;
+
+        outputSlot = matches[0];
+        return true;
+    }
+
     private static bool IsClearRouteInputKey(string inputSlotKey)
     {
         if (string.IsNullOrWhiteSpace(inputSlotKey))
@@ -236,10 +307,10 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
             return false;
         }
 
-        return ctl.SessionManager.TryActivateMultiviewLayout(this, output.Device, layoutName);
+        return ctl.SessionManager.TryActivateMVLayout(this, output.Device, layoutName);
     }
 
-    public bool ActivateMultiviewLayout(string outputSlotKey, string layoutName)
+    public bool ActivateMVLayout(string outputSlotKey, string layoutName)
     {
         return ApplyControllerMVLayout(outputSlotKey, layoutName);
     }
@@ -368,7 +439,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         return ctl.SessionManager.TryApplyMVPreset(this, output.Device, presetKey);
     }
 
-    public bool TryGetTrackedMultiviewLayout(string outputSlotKey, out string layoutName, out bool inferred)
+    public bool TryGetTrackedMVLayout(string outputSlotKey, out string layoutName, out bool inferred)
     {
         layoutName = null;
         inferred = false;
@@ -424,7 +495,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         return !string.IsNullOrWhiteSpace(layoutKey);
     }
 
-    public bool ProbeAndLearnMultiviewLayouts(string outputSlotKey)
+    public bool ProbeAndLearnMVLayouts(string outputSlotKey)
     {
         if (!OutputSlots.TryGetValue(outputSlotKey, out var outputSlot))
         {
@@ -451,15 +522,15 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
             return false;
         }
 
-        return ctl.SessionManager.TryProbeAndLearnMultiviewLayouts(this, output.Device);
+        return ctl.SessionManager.TryProbeAndLearnMVLayouts(this, output.Device);
     }
 
-    public bool RouteMultiviewTile(string inputSlotKey, string outputSlotKey, int tileReference)
+    public bool RouteMVTile(string inputSlotKey, string outputSlotKey, int tileReference)
     {
-        return RouteMultiviewTile(inputSlotKey, outputSlotKey, null, tileReference);
+        return RouteMVTile(inputSlotKey, outputSlotKey, null, tileReference);
     }
 
-    public bool FullscreenMultiviewTile(string outputSlotKey, int sourceTileReference)
+    public bool FullscreenMVTile(string outputSlotKey, int sourceTileReference)
     {
         if (!OutputSlots.TryGetValue(outputSlotKey, out var outputSlot))
         {
@@ -486,10 +557,10 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
             return false;
         }
 
-        return ctl.SessionManager.TryFullscreenMultiviewTile(this, output.Device, sourceTileReference);
+        return ctl.SessionManager.TryFullscreenMVTile(this, output.Device, sourceTileReference);
     }
 
-    public bool ReturnFromMultiviewFullscreen(string outputSlotKey)
+    public bool ReturnFromMVFullscreen(string outputSlotKey)
     {
         if (!OutputSlots.TryGetValue(outputSlotKey, out var outputSlot))
         {
@@ -516,10 +587,10 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
             return false;
         }
 
-        return ctl.SessionManager.TryReturnFromMultiviewFullscreen(this, output.Device);
+        return ctl.SessionManager.TryReturnFromMVFullscreen(this, output.Device);
     }
 
-    public bool TryGetMultiviewFullscreenReturnLayout(string outputSlotKey, out string layoutName)
+    public bool TryGetMVFullscreenReturnLayout(string outputSlotKey, out string layoutName)
     {
         layoutName = null;
 
@@ -548,10 +619,10 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
             return false;
         }
 
-        return ctl.SessionManager.TryGetMultiviewFullscreenReturnLayout(output.Device, out layoutName);
+        return ctl.SessionManager.TryGetMVFullscreenReturnLayout(output.Device, out layoutName);
     }
 
-    public bool RouteMultiviewTile(string inputSlotKey, string outputSlotKey, string layoutName, int tileReference)
+    public bool RouteMVTile(string inputSlotKey, string outputSlotKey, string layoutName, int tileReference)
     {
         if (!InputSlots.TryGetValue(inputSlotKey, out var inputSlot))
         {
@@ -590,7 +661,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
             return false;
         }
 
-        var sentImmediately = ctl.SessionManager.TryRouteMultiviewTile(this, input.Device, output.Device, layoutName, tileReference);
+        var sentImmediately = ctl.SessionManager.TryRouteMVTile(this, input.Device, output.Device, layoutName, tileReference);
 
         if (!sentImmediately)
         {

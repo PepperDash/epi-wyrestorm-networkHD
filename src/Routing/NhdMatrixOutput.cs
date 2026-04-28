@@ -37,7 +37,7 @@ public class NhdMatrixOutput : IRoutingOutputSlot
 
     public NhdBaseDevice Device => _device;
 
-    public int SlotNumber => _device.DeviceId;
+    public int SlotNumber => _device.MatrixOutputSlot;
 
     public eRoutingSignalType SupportedSignalTypes => SupportsMatrixSwitching ? _supportedSignalTypes : 0;
 

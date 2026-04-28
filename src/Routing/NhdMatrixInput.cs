@@ -22,7 +22,7 @@ public class NhdMatrixInput : IRoutingInputSlot
 
     public NhdBaseDevice Device => _device;
 
-    public int SlotNumber => _device.DeviceId;
+    public int SlotNumber => _device.MatrixInputSlot;
 
     public eRoutingSignalType SupportedSignalTypes => _supportedSignalTypes;
 
