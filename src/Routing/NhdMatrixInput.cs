@@ -2,11 +2,10 @@ using System;
 using System.Linq;
 using PepperDash.Core;
 using PepperDash.Essentials.Core;
-using PepperDash.Essentials.Core.Routing;
 
 namespace PepperDash.Essentials.Plugin.Routing;
 
-public class NhdMatrixInput : IRoutingInputSlot
+public class NhdMatrixInput : INhdInputSlot
 {
     private readonly NhdBaseDevice _device;
     private readonly eRoutingSignalType _supportedSignalTypes;

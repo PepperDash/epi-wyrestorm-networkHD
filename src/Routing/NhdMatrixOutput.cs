@@ -3,15 +3,14 @@ using System.Collections.Generic;
 using System.Linq;
 using PepperDash.Core;
 using PepperDash.Essentials.Core;
-using PepperDash.Essentials.Core.Routing;
 
 namespace PepperDash.Essentials.Plugin.Routing;
 
-public class NhdMatrixOutput : IRoutingOutputSlot
+public class NhdMatrixOutput : IKeyName
 {
     private readonly NhdBaseDevice _device;
     private readonly eRoutingSignalType _supportedSignalTypes;
-    private readonly Dictionary<eRoutingSignalType, IRoutingInputSlot> _currentRoutes;
+    private readonly Dictionary<eRoutingSignalType, INhdInputSlot> _currentRoutes;
 
     public NhdMatrixOutput(NhdBaseDevice device)
     {
@@ -45,7 +44,7 @@ public class NhdMatrixOutput : IRoutingOutputSlot
 
     public string Key => _device.Key;
 
-    public Dictionary<eRoutingSignalType, IRoutingInputSlot> CurrentRoutes => _currentRoutes;
+    public Dictionary<eRoutingSignalType, INhdInputSlot> CurrentRoutes => _currentRoutes;
 
     public event EventHandler OutputSlotChanged;
 
@@ -62,9 +61,9 @@ public class NhdMatrixOutput : IRoutingOutputSlot
         return signalTypes == 0 ? eRoutingSignalType.AudioVideo : signalTypes;
     }
 
-    private static Dictionary<eRoutingSignalType, IRoutingInputSlot> BuildCurrentRoutes(eRoutingSignalType supportedSignalTypes)
+    private static Dictionary<eRoutingSignalType, INhdInputSlot> BuildCurrentRoutes(eRoutingSignalType supportedSignalTypes)
     {
-        var currentRoutes = new Dictionary<eRoutingSignalType, IRoutingInputSlot>();
+        var currentRoutes = new Dictionary<eRoutingSignalType, INhdInputSlot>();
 
         if (supportedSignalTypes.HasFlag(eRoutingSignalType.Audio))
             currentRoutes[eRoutingSignalType.Audio] = default;
@@ -87,7 +86,7 @@ public class NhdMatrixOutput : IRoutingOutputSlot
         return currentRoutes;
     }
 
-    public void SetInputRoute(eRoutingSignalType type, IRoutingInputSlot input)
+    public void SetInputRoute(eRoutingSignalType type, INhdInputSlot input)
     {
         if (_currentRoutes.ContainsKey(type))
             _currentRoutes[type] = input;

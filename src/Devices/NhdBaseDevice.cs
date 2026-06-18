@@ -21,7 +21,7 @@ namespace PepperDash.Essentials.Plugin
 		public bool Value { get; }
 	}
 
-	public abstract class NhdBaseDevice : EssentialsDevice, IRoutingWithFeedback, ICommunicationMonitor
+	public abstract class NhdBaseDevice : EssentialsDevice, IRoutingMidpointWithFeedback, ICommunicationMonitor
 	{
 		private const long DefaultCommunicationWarningTimeMs = 10000;
 		private const long DefaultCommunicationErrorTimeMs = 30000;
@@ -973,6 +973,22 @@ namespace PepperDash.Essentials.Plugin
 			{
 				callback(this, route);
 			}
+		}
+
+		/// <summary>
+		/// Clears the route on the given output. Endpoint switching is driven by the NHD matrix
+		/// router (see <see cref="Routing.NhdGlobalRouter"/>); at the endpoint level a clear simply
+		/// drops the tracked current route and notifies subscribers.
+		/// </summary>
+		public void ClearRoute(object outputSelector, eRoutingSignalType signalType)
+		{
+			if (CurrentRoutes.Count == 0)
+				return;
+
+			CurrentRoutes.Clear();
+
+			var callback = RouteChanged;
+			callback?.Invoke(this, null);
 		}
 
 		// Video ports
