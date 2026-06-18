@@ -85,8 +85,18 @@ public class ConfigDeserializationTests
             """;
 
         var dict = JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
-        dict.Should().ContainKey("matrixInputSlot");
-        dict.Should().ContainKey("alias");
-        dict.Should().ContainKey("multiviewPresets");
+        dict.Should().NotBeNull();
+
+        // Plain POCO contract: every JSON key must map (case-insensitively, Newtonsoft's default
+        // contract) to a real NhdDeviceProperties property — so this fails if the config drifts.
+        var propNames = Find("PepperDash.Essentials.Plugin.NhdDeviceProperties")!
+            .GetProperties().Select(p => p.Name).ToList();
+
+        foreach (var key in dict!.Keys)
+        {
+            propNames.Should().Contain(
+                n => string.Equals(n, key, StringComparison.OrdinalIgnoreCase),
+                $"JSON key '{key}' should map to an NhdDeviceProperties property");
+        }
     }
 }
