@@ -44,7 +44,8 @@ public class NhdMatrixOutput : IKeyName
 
     public string Key => _device.Key;
 
-    public Dictionary<eRoutingSignalType, INhdInputSlot> CurrentRoutes => _currentRoutes;
+    // Read-only view: all mutations must go through SetInputRoute so OutputSlotChanged fires.
+    public IReadOnlyDictionary<eRoutingSignalType, INhdInputSlot> CurrentRoutes => _currentRoutes;
 
     public event EventHandler OutputSlotChanged;
 

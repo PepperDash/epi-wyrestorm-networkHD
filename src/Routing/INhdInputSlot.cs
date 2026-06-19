@@ -1,4 +1,3 @@
-using System;
 using PepperDash.Core;
 using PepperDash.Essentials.Core;
 
@@ -20,12 +19,6 @@ public interface INhdInputSlot : IKeyName
     /// <summary>Signal types this input can carry.</summary>
     eRoutingSignalType SupportedSignalTypes { get; }
 
-    /// <summary>Online feedback for the backing endpoint.</summary>
+    /// <summary>Online feedback for the input (always online for the clear/none sentinel).</summary>
     BoolFeedback IsOnline { get; }
-
-    /// <summary>True when the input has detected video sync.</summary>
-    bool VideoSyncDetected { get; }
-
-    /// <summary>Raised when <see cref="VideoSyncDetected"/> changes.</summary>
-    event EventHandler VideoSyncChanged;
 }

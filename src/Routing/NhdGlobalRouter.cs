@@ -123,14 +123,15 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingMidpointWithFeedback
         }
 
         if (handled)
-            RecordRoute(output, inputSlot);
+            RecordRoute(output, inputSlot, signalType);
         else
             this.LogError("Unsupported signal type '{signalType}' for matrix command", signalType);
     }
 
     /// <summary>
     /// Clears the route to the given output by routing the "none" sentinel input to it.
-    /// Part of <see cref="IRoutingMidpointWithFeedback"/>.
+    /// The output's entry is removed from <see cref="CurrentRoutes"/> and
+    /// <see cref="RouteChanged"/> is raised. Part of <see cref="IRoutingMidpointWithFeedback"/>.
     /// </summary>
     public void ClearRoute(object outputSelector, eRoutingSignalType signalType)
     {
@@ -155,18 +156,26 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingMidpointWithFeedback
 
     // Maintains the IRoutingMidpointWithFeedback.CurrentRoutes list + raises RouteChanged using
     // this router's own ports (selectors point at the backing NHD endpoint devices).
-    private void RecordRoute(NhdMatrixOutput output, INhdInputSlot inputSlot)
+    private void RecordRoute(NhdMatrixOutput output, INhdInputSlot inputSlot, eRoutingSignalType signalType)
     {
         if (output?.Device == null)
             return;
 
-        var outputPort = OutputPorts.FirstOrDefault(p => ReferenceEquals(p.Selector, output.Device));
+        var outputPort = SelectRouterPort(OutputPorts, output.Device, signalType);
         if (outputPort == null)
+        {
+            // The hardware switch already succeeded; surface that feedback couldn't be updated.
+            this.LogWarning("RecordRoute: routed output '{rx}' has no matching router output port; CurrentRoutes/RouteChanged will be stale", output.Device.Key);
             return;
+        }
 
         RoutingInputPort inputPort = null;
         if (inputSlot is NhdMatrixInput matrixInput && matrixInput.Device != null)
-            inputPort = InputPorts.FirstOrDefault(p => ReferenceEquals(p.Selector, matrixInput.Device));
+        {
+            inputPort = SelectRouterPort(InputPorts, matrixInput.Device, signalType);
+            if (inputPort == null)
+                this.LogWarning("RecordRoute: routed input '{tx}' has no matching router input port for '{signalType}'; route feedback may be incomplete", matrixInput.Device.Key, signalType);
+        }
 
         CurrentRoutes.RemoveAll(r => ReferenceEquals(r.OutputPort, outputPort));
 
@@ -175,6 +184,19 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingMidpointWithFeedback
             CurrentRoutes.Add(descriptor);
 
         RouteChanged?.Invoke(this, descriptor);
+    }
+
+    // Pick the router port backing an endpoint device. A transmitter/receiver can expose several
+    // ports (stream, IR, serial, USB), all carrying the device as Selector, so prefer the port whose
+    // signal type matches the routed signal; fall back to the device's first port.
+    private static T SelectRouterPort<T>(IEnumerable<T> ports, IKeyed device, eRoutingSignalType signalType)
+        where T : RoutingPort
+    {
+        var forDevice = ports.Where(p => ReferenceEquals(p.Selector, device)).ToList();
+        if (forDevice.Count == 0)
+            return null;
+
+        return forDevice.FirstOrDefault(p => (p.Type & signalType) != 0) ?? forDevice[0];
     }
 
     public void ExecuteNumericSwitch(ushort input, ushort output, eRoutingSignalType type)

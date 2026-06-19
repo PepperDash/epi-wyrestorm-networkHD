@@ -1,4 +1,3 @@
-using System;
 using PepperDash.Essentials.Core;
 
 namespace PepperDash.Essentials.Plugin.Routing;
@@ -17,12 +16,7 @@ public class NhdMatrixClearInput : INhdInputSlot
 
     public BoolFeedback IsOnline { get; private set; }
 
-    public bool VideoSyncDetected => false;
-
     public string Key => "none";
-
-    // The "route off" sentinel has no backing endpoint, so sync state never changes.
-    public event EventHandler VideoSyncChanged { add { } remove { } }
 
     public NhdMatrixClearInput(eRoutingSignalType supportedSignalTypes = eRoutingSignalType.AudioVideo)
     {
