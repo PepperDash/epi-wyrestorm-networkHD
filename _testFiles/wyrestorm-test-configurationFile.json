@@ -1,0 +1,221 @@
+{
+  "system": {
+    "info": {
+      "name": "Wyrestorm NetworkHD System",
+      "systemVersion": "1.0.0",
+      "buildTime": "2026-06-22",
+      "comment": "Ready-to-load Essentials configuration with NHD-120-TX transmitter and NHD-150-RX receiver"
+    }
+  },
+  "template": {
+    "devices": [
+      {
+        "key": "processor",
+        "name": "processor",
+        "type": "rmc4",
+        "group": "processor",
+        "supportedConfigModes": [
+          "compliance",
+          "essentials"
+        ],
+        "supportedSystemTypes": [
+          "hudType",
+          "presType",
+          "vtcType",
+          "custom"
+        ],
+        "supportsCompliance": true,
+        "properties": {}
+      },
+      {
+        "key": "nhdCtl",
+        "name": "NHD Controller",
+        "type": "nhd-ctl-pro",
+        "group": "nhd",
+        "properties": {
+          "control": {
+            "method": "tcpIp",
+            "tcpSshProperties": {
+              "address": "10.11.50.79",
+              "port": 23,
+              "autoReconnect": true,
+              "autoReconnectIntervalMs": 10000,
+              "username": "admin",
+              "password": "admin"
+            }
+          },
+          "apiUsername": "admin",
+          "apiPassword": "admin",
+        "customMultiviewLayouts": [
+          {
+            "key": "fullscreen",
+            "displayName": "Fullscreen",
+            "mode": "Tile",
+            "canvasWidth": 1920,
+            "canvasHeight": 1080,
+            "audioMode": "Window",
+            "audioWindowReference": 1,
+            "windows": [
+              {
+                "windowReference": 1,
+                "x": 0,
+                "y": 0,
+                "width": 1920,
+                "height": 1080,
+                "scale": "Fit"
+              }
+            ]
+          },
+          {
+            "key": "pip-main",
+            "displayName": "Picture-in-Picture",
+            "mode": "Overlay",
+            "canvasWidth": 1920,
+            "canvasHeight": 1080,
+            "audioMode": "Window",
+            "audioWindowReference": 1,
+            "windows": [
+              {
+                "windowReference": 1,
+                "x": 0,
+                "y": 0,
+                "width": 1920,
+                "height": 1080,
+                "scale": "Fit"
+              },
+              {
+                "windowReference": 2,
+                "x": 1400,
+                "y": 600,
+                "width": 480,
+                "height": 360,
+                "scale": "Fit"
+              }
+            ]
+          }
+        ],
+        "multiviewPresets": [
+          {
+            "key": "4-tile",
+            "displayName": "4-Tile Grid",
+            "layoutSource": "Controller",
+            "layout": "4-1",
+            "audioMode": "NoChange"
+          },
+          {
+            "key": "fullscreen-custom",
+            "displayName": "Fullscreen (Custom)",
+            "layoutSource": "Config",
+            "layout": "fullscreen",
+            "windowRoutes": [
+              {
+                "windowReference": 1,
+                "txKey": "nhdTx1"
+              }
+            ],
+            "audioMode": "Window",
+            "audioWindowReference": 1
+          }
+        ]
+      }
+    },
+    {
+      "key": "nhdTx1",
+      "name": "Transmitter 1",
+      "type": "nhd-120-tx",
+      "group": "nhd",
+      "properties": {
+        "matrixInputSlot": 1,
+        "alias": "Tx1",
+        "rs232RoutingMode": "Enabled",
+        "irRoutingMode": "Enabled"
+      }
+    },
+    {
+      "key": "nhdRx1",
+      "name": "Receiver 1",
+      "type": "nhd-150-rx",
+      "group": "nhd",
+      "properties": {
+        "matrixOutputSlot": 1,
+        "alias": "Rx1",
+        "rs232RoutingMode": "Enabled",
+        "customMultiviewLayouts": [
+          {
+            "key": "fullscreen",
+            "displayName": "Fullscreen",
+            "mode": "Tile",
+            "canvasWidth": 1920,
+            "canvasHeight": 1080,
+            "audioMode": "Window",
+            "audioWindowReference": 1,
+            "windows": [
+              {
+                "windowReference": 1,
+                "x": 0,
+                "y": 0,
+                "width": 1920,
+                "height": 1080,
+                "scale": "Fit"
+              }
+            ]
+          },
+          {
+            "key": "pip-main",
+            "displayName": "Picture-in-Picture",
+            "mode": "Overlay",
+            "canvasWidth": 1920,
+            "canvasHeight": 1080,
+            "audioMode": "Window",
+            "audioWindowReference": 1,
+            "windows": [
+              {
+                "windowReference": 1,
+                "x": 0,
+                "y": 0,
+                "width": 1920,
+                "height": 1080,
+                "scale": "Fit"
+              },
+              {
+                "windowReference": 2,
+                "x": 1400,
+                "y": 600,
+                "width": 480,
+                "height": 360,
+                "scale": "Fit"
+              }
+            ]
+          }
+        ],
+        "multiviewPresets": [
+          {
+            "key": "4tile",
+            "displayName": "4-Tile",
+            "layoutSource": "Controller",
+            "layout": "4-1",
+            "audioMode": "NoChange"
+          },
+          {
+            "key": "fullscreen",
+            "displayName": "Fullscreen",
+            "layoutSource": "Config",
+            "layout": "fullscreen",
+            "windowRoutes": [
+              {
+                "windowReference": 1,
+                "txKey": "nhdTx1"
+              }
+            ],
+            "audioMode": "Window",
+            "audioWindowReference": 1
+          }
+        ]
+      }
+    }
+    ],
+    "info": {},
+    "rooms": [],
+    "tieLines": []
+  }
+}
