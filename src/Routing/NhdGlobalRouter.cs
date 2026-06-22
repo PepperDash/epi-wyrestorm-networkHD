@@ -9,7 +9,7 @@ using PepperDash.Essentials.Plugin.Comms;
 
 namespace PepperDash.Essentials.Plugin.Routing;
 
-public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
+public class NhdGlobalRouter : EssentialsDevice, IRoutingMidpointWithFeedback
 {
     private static readonly NhdGlobalRouter _instance = new();
     private readonly NhdPrimaryStreamDomainRouter _primaryStreamRouter;
@@ -30,8 +30,8 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         InputPorts = new RoutingPortCollection<RoutingInputPort>();
         OutputPorts = new RoutingPortCollection<RoutingOutputPort>();
 
-        InputSlots = new Dictionary<string, IRoutingInputSlot>();
-        OutputSlots = new Dictionary<string, IRoutingOutputSlot>();
+        InputSlots = new Dictionary<string, INhdInputSlot>();
+        OutputSlots = new Dictionary<string, NhdMatrixOutput>();
 
         AddPostActivationAction(BuildMatrixRouting);
         AddPostActivationAction(BuildTieLines);
@@ -42,8 +42,12 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
     public RoutingPortCollection<RoutingInputPort> InputPorts { get; private set; }
     public RoutingPortCollection<RoutingOutputPort> OutputPorts { get; private set; }
 
-    public Dictionary<string, IRoutingInputSlot> InputSlots { get; private set; }
-    public Dictionary<string, IRoutingOutputSlot> OutputSlots { get; private set; }
+    public Dictionary<string, INhdInputSlot> InputSlots { get; private set; }
+    public Dictionary<string, NhdMatrixOutput> OutputSlots { get; private set; }
+
+    // IRoutingMidpointWithFeedback feedback surface (consumed by core routing / Mobile Control).
+    public List<RouteSwitchDescriptor> CurrentRoutes { get; } = new List<RouteSwitchDescriptor>();
+    public event RouteChangedEventHandler RouteChanged;
 
     public static string GetRouterInputPortKeyForEndpointPort(string endpointKey, string endpointPortKey)
     {
@@ -83,9 +87,9 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
             return;
         }
 
-        if (inputSelector is not IRoutingInputSlot inputSlot)
+        if (inputSelector is not INhdInputSlot inputSlot)
         {
-            this.LogError("Input selector is not IRoutingInputSlot");
+            this.LogError("Input selector is not INhdInputSlot");
             return;
         }
 
@@ -118,8 +122,81 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
                 SetTrackedOutputRoutes(output, inputSlot, controlSignalType);
         }
 
-        if (!handled)
+        if (handled)
+            RecordRoute(output, inputSlot, signalType);
+        else
             this.LogError("Unsupported signal type '{signalType}' for matrix command", signalType);
+    }
+
+    /// <summary>
+    /// Clears the route to the given output by routing the "none" sentinel input to it.
+    /// The output's entry is removed from <see cref="CurrentRoutes"/> and
+    /// <see cref="RouteChanged"/> is raised. Part of <see cref="IRoutingMidpointWithFeedback"/>.
+    /// </summary>
+    public void ClearRoute(object outputSelector, eRoutingSignalType signalType)
+    {
+        var output = outputSelector as NhdMatrixOutput;
+        if (output == null && outputSelector is RoutingOutputPort outputPort)
+            output = OutputSlots.Values.FirstOrDefault(o => ReferenceEquals(o.Device, outputPort.Selector));
+
+        if (output == null)
+        {
+            this.LogError("ClearRoute: unable to resolve output selector to an NhdMatrixOutput");
+            return;
+        }
+
+        if (!InputSlots.TryGetValue("none", out var clearInput))
+        {
+            this.LogError("ClearRoute: no 'none' clear input is available");
+            return;
+        }
+
+        ExecuteSwitch(clearInput, output, signalType);
+    }
+
+    // Maintains the IRoutingMidpointWithFeedback.CurrentRoutes list + raises RouteChanged using
+    // this router's own ports (selectors point at the backing NHD endpoint devices).
+    private void RecordRoute(NhdMatrixOutput output, INhdInputSlot inputSlot, eRoutingSignalType signalType)
+    {
+        if (output?.Device == null)
+            return;
+
+        var outputPort = SelectRouterPort(OutputPorts, output.Device, signalType);
+        if (outputPort == null)
+        {
+            // The hardware switch already succeeded; surface that feedback couldn't be updated.
+            this.LogWarning("RecordRoute: routed output '{rx}' has no matching router output port; CurrentRoutes/RouteChanged will be stale", output.Device.Key);
+            return;
+        }
+
+        RoutingInputPort inputPort = null;
+        if (inputSlot is NhdMatrixInput matrixInput && matrixInput.Device != null)
+        {
+            inputPort = SelectRouterPort(InputPorts, matrixInput.Device, signalType);
+            if (inputPort == null)
+                this.LogWarning("RecordRoute: routed input '{tx}' has no matching router input port for '{signalType}'; route feedback may be incomplete", matrixInput.Device.Key, signalType);
+        }
+
+        CurrentRoutes.RemoveAll(r => ReferenceEquals(r.OutputPort, outputPort));
+
+        var descriptor = new RouteSwitchDescriptor(outputPort, inputPort);
+        if (inputPort != null)
+            CurrentRoutes.Add(descriptor);
+
+        RouteChanged?.Invoke(this, descriptor);
+    }
+
+    // Pick the router port backing an endpoint device. A transmitter/receiver can expose several
+    // ports (stream, IR, serial, USB), all carrying the device as Selector, so prefer the port whose
+    // signal type matches the routed signal; fall back to the device's first port.
+    private static T SelectRouterPort<T>(IEnumerable<T> ports, IKeyed device, eRoutingSignalType signalType)
+        where T : RoutingPort
+    {
+        var forDevice = ports.Where(p => ReferenceEquals(p.Selector, device)).ToList();
+        if (forDevice.Count == 0)
+            return null;
+
+        return forDevice.FirstOrDefault(p => (p.Type & signalType) != 0) ?? forDevice[0];
     }
 
     public void ExecuteNumericSwitch(ushort input, ushort output, eRoutingSignalType type)
@@ -158,7 +235,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         if (!output.SupportsMatrixSwitching)
             return false;
 
-        IRoutingInputSlot inputSlot = null;
+        INhdInputSlot inputSlot = null;
         if (!string.IsNullOrWhiteSpace(txEndpointKey))
         {
             if (!InputSlots.TryGetValue(txEndpointKey, out inputSlot))
@@ -198,7 +275,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         ExecuteSwitch(inputSlot, output, type);
     }
 
-    private bool TryResolveInputSlot(string inputSlotKey, out IRoutingInputSlot inputSlot)
+    private bool TryResolveInputSlot(string inputSlotKey, out INhdInputSlot inputSlot)
     {
         inputSlot = null;
 
@@ -214,7 +291,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         return InputSlots.TryGetValue("none", out inputSlot);
     }
 
-    private bool TryResolveInputSlot(int matrixInputSlot, out IRoutingInputSlot inputSlot)
+    private bool TryResolveInputSlot(int matrixInputSlot, out INhdInputSlot inputSlot)
     {
         inputSlot = null;
 
@@ -224,7 +301,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         var matches = InputSlots.Values
             .OfType<NhdMatrixInput>()
             .Where(slot => slot.SlotNumber == matrixInputSlot)
-            .Cast<IRoutingInputSlot>()
+            .Cast<INhdInputSlot>()
             .ToList();
 
         if (matches.Count == 0)
@@ -698,14 +775,13 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
                 .AllDevices.OfType<NhdBaseDevice>()
                 .Where(d => d.IsTransmitter)
                 .Select(d => new NhdMatrixInput(d))
-                .Cast<IRoutingInputSlot>()
+                .Cast<INhdInputSlot>()
                 .ToDictionary(i => i.Key, i => i);
 
             this.LogDebug("Total inputs: {count}", InputSlots.Count);
 
             OutputSlots = receiverSlots
                 .Select(d => new NhdMatrixOutput(d))
-                .Cast<IRoutingOutputSlot>()
                 .ToDictionary(o => o.Key, o => o);
 
             this.LogDebug("Total outputs: {count}", OutputSlots.Count);
@@ -799,7 +875,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
         }
     }
 
-    private static void SetTrackedOutputRoutes(NhdMatrixOutput output, IRoutingInputSlot inputSlot, eRoutingSignalType signalType)
+    private static void SetTrackedOutputRoutes(NhdMatrixOutput output, INhdInputSlot inputSlot, eRoutingSignalType signalType)
     {
         if (output == null)
             return;
@@ -843,7 +919,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
             output.SetInputRoute(NhdRoutingSignalTypes.Serial, trackedInput);
     }
 
-    private static string GetTxReference(IRoutingInputSlot inputSlot)
+    private static string GetTxReference(INhdInputSlot inputSlot)
     {
         if (inputSlot == null || inputSlot is NhdMatrixClearInput)
             return RouteOff;
@@ -868,7 +944,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
 
     private sealed class NhdPrimaryStreamDomainRouter
     {
-        public bool TryExecute(IKeyed source, IRoutingInputSlot inputSlot, NhdMatrixOutput output, eRoutingSignalType signalType, out eRoutingSignalType routedSignalType)
+        public bool TryExecute(IKeyed source, INhdInputSlot inputSlot, NhdMatrixOutput output, eRoutingSignalType signalType, out eRoutingSignalType routedSignalType)
         {
             routedSignalType = 0;
 
@@ -924,7 +1000,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
 
     private sealed class NhdUsbDomainRouter
     {
-        public bool TryExecute(IKeyed source, IRoutingInputSlot inputSlot, NhdMatrixOutput output, eRoutingSignalType signalType)
+        public bool TryExecute(IKeyed source, INhdInputSlot inputSlot, NhdMatrixOutput output, eRoutingSignalType signalType)
         {
             if (!HasUsbSignal(signalType))
                 return false;
@@ -946,7 +1022,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingNumeric, IMatrixRouting
 
     private sealed class NhdControlDomainRouter
     {
-        public bool TryExecute(IKeyed source, IRoutingInputSlot inputSlot, NhdMatrixOutput output, eRoutingSignalType signalType)
+        public bool TryExecute(IKeyed source, INhdInputSlot inputSlot, NhdMatrixOutput output, eRoutingSignalType signalType)
         {
             var handled = false;
             var txRef = GetTxReference(inputSlot);

@@ -1,10 +1,8 @@
-using System;
 using PepperDash.Essentials.Core;
-using PepperDash.Essentials.Core.Routing;
 
 namespace PepperDash.Essentials.Plugin.Routing;
 
-public class NhdMatrixClearInput : IRoutingInputSlot
+public class NhdMatrixClearInput : INhdInputSlot
 {
     private readonly eRoutingSignalType _supportedSignalTypes;
 
@@ -18,11 +16,7 @@ public class NhdMatrixClearInput : IRoutingInputSlot
 
     public BoolFeedback IsOnline { get; private set; }
 
-    public bool VideoSyncDetected => false;
-
     public string Key => "none";
-
-    public event EventHandler VideoSyncChanged;
 
     public NhdMatrixClearInput(eRoutingSignalType supportedSignalTypes = eRoutingSignalType.AudioVideo)
     {
