@@ -938,8 +938,7 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingMidpointWithFeedback
 
     private static bool IsMatrixTieLineReceiver(NhdBaseDevice device)
     {
-        return IsMatrixOutputSlotCandidate(device)
-            && !device.SupportsMultiview;
+        return IsMatrixOutputSlotCandidate(device);
     }
 
     private sealed class NhdPrimaryStreamDomainRouter
