@@ -738,19 +738,34 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingMidpointWithFeedback
             return false;
         }
 
-        var sentImmediately = ctl.SessionManager.TryRouteMVTile(this, input.Device, output.Device, layoutName, tileReference);
+        var result = ctl.SessionManager.RouteMVTileGuarded(this, input.Device, output.Device, layoutName, tileReference);
 
-        if (!sentImmediately)
+        var effectiveLayout = string.IsNullOrWhiteSpace(layoutName)
+            ? output.Device.ActivePresetMultiviewLayoutName
+            : layoutName;
+
+        switch (result)
         {
-            this.LogInformation(
-                "Multiview tile route queued pending state verification. tx='{tx}', rx='{rx}', layout='{layout}', tile={tile}",
-                input.Device.Key,
-                output.Device.Key,
-                string.IsNullOrWhiteSpace(layoutName) ? output.Device.ActivePresetMultiviewLayoutName : layoutName,
-                tileReference);
+            case MultiviewTileRouteResult.Queued:
+                this.LogInformation(
+                    "Multiview tile route queued pending state verification. tx='{tx}', rx='{rx}', layout='{layout}', tile={tile}",
+                    input.Device.Key,
+                    output.Device.Key,
+                    effectiveLayout,
+                    tileReference);
+                break;
+
+            case MultiviewTileRouteResult.Rejected:
+                this.LogError(
+                    "Multiview tile route rejected as invalid. tx='{tx}', rx='{rx}', layout='{layout}', tile={tile}. See preceding error for the specific reason.",
+                    input.Device.Key,
+                    output.Device.Key,
+                    effectiveLayout,
+                    tileReference);
+                break;
         }
 
-        return sentImmediately;
+        return result != MultiviewTileRouteResult.Rejected;
     }
 
     private void BuildMatrixRouting()

@@ -25,6 +25,21 @@ namespace PepperDash.Essentials.Plugin.Comms
         public string Reason { get; private set; }
     }
 
+    /// <summary>
+    /// Outcome of a multiview tile route request.
+    /// </summary>
+    public enum MultiviewTileRouteResult
+    {
+        /// <summary>The route command was sent to the controller immediately.</summary>
+        Sent,
+
+        /// <summary>The route was deferred until the decoder's multiview state is verified, then auto-dispatched.</summary>
+        Queued,
+
+        /// <summary>The route was rejected as invalid (e.g. tile out of range, layout unavailable) and will not be sent.</summary>
+        Rejected,
+    }
+
     public class NhdCtlSessionManager
     {
         private static readonly Regex AliasLineRegex = new Regex(
@@ -281,18 +296,23 @@ namespace PepperDash.Essentials.Plugin.Comms
 
         public bool TryRouteMVTile(IKeyed requestedBy, NhdBaseDevice txEndpoint, NhdBaseDevice rxEndpoint, string layoutName, int tileReference)
         {
+            return RouteMVTileGuarded(requestedBy, txEndpoint, rxEndpoint, layoutName, tileReference) == MultiviewTileRouteResult.Sent;
+        }
+
+        public MultiviewTileRouteResult RouteMVTileGuarded(IKeyed requestedBy, NhdBaseDevice txEndpoint, NhdBaseDevice rxEndpoint, string layoutName, int tileReference)
+        {
             var source = requestedBy ?? _ctl;
 
             if (txEndpoint == null || rxEndpoint == null)
             {
                 Debug.LogError("[{0}] Unable to route multiview tile: TX or RX endpoint is null", source.Key);
-                return false;
+                return MultiviewTileRouteResult.Rejected;
             }
 
             if (!rxEndpoint.SupportsMultiview)
             {
                 Debug.LogError("[{0}] Endpoint '{1}' does not support multiview tile routing", source.Key, rxEndpoint.Key);
-                return false;
+                return MultiviewTileRouteResult.Rejected;
             }
 
             var trimmedLayout = string.IsNullOrWhiteSpace(layoutName)
@@ -302,25 +322,25 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (string.IsNullOrWhiteSpace(trimmedLayout))
             {
                 Debug.LogError("[{0}] Multiview tile routing requires an active preset layout. Activate one first with 'mscene active'.", source.Key);
-                return false;
+                return MultiviewTileRouteResult.Rejected;
             }
 
             if (tileReference <= 0)
             {
                 Debug.LogError("[{0}] Multiview tile reference must be >= 1", source.Key);
-                return false;
+                return MultiviewTileRouteResult.Rejected;
             }
 
             if (rxEndpoint.AvailablePresetMultiviewLayouts.Count > 0 && !rxEndpoint.IsKnownPresetMVLayout(trimmedLayout))
             {
                 Debug.LogError("[{0}] Multiview preset layout '{1}' is not available on endpoint '{2}'", source.Key, trimmedLayout, rxEndpoint.Key);
-                return false;
+                return MultiviewTileRouteResult.Rejected;
             }
 
             if (NhdBaseDevice.TryInferPresetLayoutShape(trimmedLayout, out var inferredTileCount, out _) && tileReference > inferredTileCount)
             {
-                Debug.LogError("[{0}] Multiview tile reference {1} exceeds inferred tile count {2} for layout '{3}'", source.Key, tileReference, inferredTileCount, trimmedLayout);
-                return false;
+                Debug.LogError("[{0}] Multiview tile reference {1} exceeds tile count {2} for layout '{3}'", source.Key, tileReference, inferredTileCount, trimmedLayout);
+                return MultiviewTileRouteResult.Rejected;
             }
 
             if (CanRouteTileNow(rxEndpoint, tileReference))
@@ -332,15 +352,18 @@ namespace PepperDash.Essentials.Plugin.Comms
                     tileReference);
 
                 var sent = NhdApiCommandSender.TrySend(source, command);
-                if (sent)
+                if (!sent)
                 {
-                    if (!ShouldBypassFullscreenReturnClearForRoute(rxEndpoint, txEndpoint.ApiEndpointReference, trimmedLayout, tileReference))
-                    {
-                        ClearFullscreenReturnState(rxEndpoint, "tile route changed");
-                    }
+                    Debug.LogError("[{0}] Failed to send multiview tile route command for endpoint '{1}'", source.Key, rxEndpoint.Key);
+                    return MultiviewTileRouteResult.Rejected;
                 }
 
-                return sent;
+                if (!ShouldBypassFullscreenReturnClearForRoute(rxEndpoint, txEndpoint.ApiEndpointReference, trimmedLayout, tileReference))
+                {
+                    ClearFullscreenReturnState(rxEndpoint, "tile route changed");
+                }
+
+                return MultiviewTileRouteResult.Sent;
             }
 
             _pendingTileRoutes[rxEndpoint.Key] = new PendingMultiviewTileRoute
@@ -353,7 +376,7 @@ namespace PepperDash.Essentials.Plugin.Comms
             };
 
             RequestMultiviewState(rxEndpoint, source);
-            return false;
+            return MultiviewTileRouteResult.Queued;
         }
 
         public bool TryActivateMVLayout(IKeyed requestedBy, NhdBaseDevice rxEndpoint, string layoutName)

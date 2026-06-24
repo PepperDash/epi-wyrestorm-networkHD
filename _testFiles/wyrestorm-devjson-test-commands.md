@@ -82,6 +82,29 @@ devjson:1 {"deviceKey":"nhdRx1","methodName":"RecallMVLayout","params":["preset:
 devjson:1 {"deviceKey":"nhdRx1","methodName":"RecallMVLayout","params":["test1"]}
 ```
 
+**Config-Driven Custom Layouts (RX device — `customMultiviewLayouts`):**
+```json
+# Keys come from customMultiviewLayouts. Resolution order: RX-local first,
+# then CTL-level fallback (RX overrides CTL when the same key is defined on both).
+devjson:1 {"deviceKey":"nhdRx1","methodName":"ApplyCustomMVLayout","params":["fullscreen"]}
+devjson:1 {"deviceKey":"nhdRx1","methodName":"ApplyCustomMVLayout","params":["pip-main"]}
+```
+
+**Config-Driven Presets (RX device — `multiviewPresets`):**
+```json
+# Keys come from multiviewPresets (layout + optional window routing/audio policy).
+# "4-tile" / "fullscreen-custom" are defined on the CTL and shared by every RX.
+# "fullscreen" is overridden locally on nhdRx1, so the RX definition wins.
+devjson:1 {"deviceKey":"nhdRx1","methodName":"ApplyMVPreset","params":["4-tile"]}
+devjson:1 {"deviceKey":"nhdRx1","methodName":"ApplyMVPreset","params":["fullscreen-custom"]}
+devjson:1 {"deviceKey":"nhdRx1","methodName":"ApplyMVPreset","params":["fullscreen"]}
+
+# A different RX (e.g. nhdRx2) with no local override resolves the same keys
+# from the CTL-level definitions.
+devjson:1 {"deviceKey":"nhdRx2","methodName":"ApplyMVPreset","params":["4-tile"]}
+devjson:1 {"deviceKey":"nhdRx2","methodName":"ApplyMVPreset","params":["fullscreen-custom"]}
+```
+
 **Device Methods via CTL (Telnet API for direct device control):**
 ```
 Telnet: matrix video set Tx1 Rx1
