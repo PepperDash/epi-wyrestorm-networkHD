@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
 using PepperDash.Essentials.Core.Config;
 using PepperDash.Essentials.Plugin.Config;
 using PepperDash.Essentials.Plugin.Enums;
@@ -30,12 +29,8 @@ namespace PepperDash.Essentials.Plugin
         public Nhd232Properties Rs232 { get; set; }
         public string ApiUsername { get; set; }
         public string ApiPassword { get; set; }
-        [JsonConverter(typeof(StringEnumConverter))]
+        [JsonConverter(typeof(TolerantStringEnumConverter))]
         public NhdDeviceMode? Mode { get; set; }
-        [JsonConverter(typeof(StringEnumConverter))]
-        public NhdComPortRoutingMode? IrRoutingMode { get; set; }
-        [JsonConverter(typeof(StringEnumConverter))]
-        public NhdComPortRoutingMode? Rs232RoutingMode { get; set; }
         public List<NhdCustomMultiviewLayoutProperties> CustomMultiviewLayouts { get; set; } = new List<NhdCustomMultiviewLayoutProperties>();
         public List<NhdMultiviewPresetProperties> MultiviewPresets { get; set; } = new List<NhdMultiviewPresetProperties>();
     }

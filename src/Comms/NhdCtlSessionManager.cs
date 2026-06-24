@@ -2937,27 +2937,11 @@ namespace PepperDash.Essentials.Plugin.Comms
 
         private void EnsureNotificationsSubscribed(string endpointReference, IKeyed source = null)
         {
-            if (string.IsNullOrWhiteSpace(endpointReference))
-                return;
-
-            var reference = endpointReference.Trim();
-            if (_subscribedNotificationReferences.Contains(reference))
-                return;
-
-            var sender = source ?? _ctl;
-            var endpointSubscribed = NhdApiCommandSender.TrySend(sender, $"notify endpoint {reference}");
-
-            if (!endpointSubscribed)
-            {
-                Debug.LogMessage(
-                    Serilog.Events.LogEventLevel.Warning,
-                    "Failed to subscribe endpoint notifications for endpoint reference '{EndpointRef}'",
-                    sender,
-                    reference);
-                return;
-            }
-
-            _subscribedNotificationReferences.Add(reference);
+            // NetworkHD endpoint notifications (e.g. "notify endpoint + source1") are unsolicited:
+            // the controller emits them automatically over the open telnet session and there is no
+            // subscribe command. Sending "notify endpoint <ref>" returns "unknown command" and, because
+            // that reply never matches the expected response, it stalled the serial command queue for the
+            // full response timeout on every endpoint. No outbound action is required here.
         }
 
         private bool TrySendNextProbeLayout(NhdBaseDevice endpoint)
@@ -3133,6 +3117,20 @@ namespace PepperDash.Essentials.Plugin.Comms
 
             var sender = source ?? _ctl;
             NhdApiCommandSender.TrySend(sender, $"mscene get {endpoint.ApiEndpointReference}");
+        }
+
+        /// <summary>
+        /// Forces an immediate controller request for the endpoint's available multiview preset
+        /// layouts (the layouts shown in the NetworkHD Multiview UI), bypassing the refresh throttle.
+        /// The controller response is parsed asynchronously into the endpoint's available layout list.
+        /// </summary>
+        public void RequestMVLayoutList(NhdBaseDevice endpoint, IKeyed source = null)
+        {
+            if (endpoint == null || !endpoint.SupportsMultiview)
+                return;
+
+            _lastMsceneListRequestUtc.Remove(endpoint.Key);
+            RequestMultiviewPresetLayouts(endpoint, source);
         }
 
         private static string BuildPresetTileRouteCommand(string txReference, string rxReference, string layoutName, int tileReference)

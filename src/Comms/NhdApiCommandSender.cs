@@ -241,6 +241,16 @@ namespace PepperDash.Essentials.Plugin.Comms
             var normalizedLine = NormalizeForMatch(line);
             var normalizedCommand = NormalizeForMatch(command);
 
+            // The controller answers an unrecognized or malformed command with a short error line.
+            // Treat that as the response to the in-flight command so the serial queue is released
+            // immediately instead of stalling for the full response timeout.
+            if (normalizedLine.StartsWith("unknown command", StringComparison.Ordinal)
+                || normalizedLine.StartsWith("bad or incomplete command", StringComparison.Ordinal)
+                || normalizedLine.StartsWith("error:", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
             if (normalizedCommand == "config get devicelist")
                 return normalizedLine.StartsWith("devicelist is", StringComparison.Ordinal);
 

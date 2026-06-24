@@ -29,9 +29,5 @@ namespace PepperDash.Essentials.Plugin.Routing
         // Control
         public const string UsbInput = "usbIn";
         public const string UsbOutput = "usbOut";
-        public const string IrInput = "irIn";
-        public const string IrOutput = "irOut";
-        public const string Rs232Input = "rs232In";
-        public const string Rs232Output = "rs232Out";
     }
 }

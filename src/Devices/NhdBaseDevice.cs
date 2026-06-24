@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Newtonsoft.Json;
 using PepperDash.Core;
 using PepperDash.Essentials.Core;
 using PepperDash.Essentials.Plugin.Comms;
@@ -529,6 +530,14 @@ namespace PepperDash.Essentials.Plugin
 				_availablePresetMultiviewLayouts.Add(layout.Trim());
 			}
 
+			Debug.LogMessage(
+				Serilog.Events.LogEventLevel.Information,
+				"[{DeviceKey}] Controller multiview layouts learned ({Count}): {Layouts}",
+				this,
+				Key,
+				_availablePresetMultiviewLayouts.Count,
+				string.Join(", ", _availablePresetMultiviewLayouts.OrderBy(l => l, StringComparer.OrdinalIgnoreCase)));
+
 			var staleSignatures = _presetLayoutGeometrySignatures
 				.Keys
 				.Where(layout => !_availablePresetMultiviewLayouts.Contains(layout))
@@ -836,6 +845,38 @@ namespace PepperDash.Essentials.Plugin
 			return ctl.SessionManager.TryReprobeAndLearnMVLayouts(this, this);
 		}
 
+		/// <summary>
+		/// Polls the NetworkHD controller for this receiver's available multiview preset layouts
+		/// (the layouts listed in the device Multiview UI) by sending 'mscene get'.
+		/// The controller response is parsed asynchronously; call GetMVLayoutsWithIdsJson afterward
+		/// to read the learned layouts. Intended for devjson queries on RX devices.
+		/// </summary>
+		public bool RefreshMVLayouts()
+		{
+			if (!SupportsMultiview || IsTransmitter)
+			{
+				Debug.LogError("[{0}] Endpoint does not support multiview layout refresh", Key);
+				return false;
+			}
+
+			var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
+			if (ctl?.SessionManager == null)
+			{
+				Debug.LogError("[{0}] NHD-CTL session manager is not available for multiview layout refresh", Key);
+				return false;
+			}
+
+			Debug.LogMessage(
+				Serilog.Events.LogEventLevel.Information,
+				"[{DeviceKey}] Requesting multiview layout list from controller (mscene get {Reference})",
+				this,
+				Key,
+				ApiEndpointReference);
+
+			ctl.SessionManager.RequestMVLayoutList(this, this);
+			return true;
+		}
+
 		public bool ApplyCustomMVLayout(string layoutKey)
 		{
 			if (!SupportsMultiview || IsTransmitter)
@@ -888,6 +929,173 @@ namespace PepperDash.Essentials.Plugin
 			}
 
 			return ctl.SessionManager.TryApplyMVPreset(this, this, presetKey);
+		}
+
+		/// <summary>
+		/// Returns available multiview layouts for this receiver with stable ids.
+		/// Intended for devjson queries on RX devices.
+		/// </summary>
+		public Dictionary<string, object> GetMVLayoutsWithIds()
+		{
+			var response = new Dictionary<string, object>
+			{
+				["receiverKey"] = Key,
+				["receiverAlias"] = ApiEndpointReference,
+				["supportsMultiview"] = SupportsMultiview,
+				["presetLayouts"] = new List<Dictionary<string, object>>(),
+				["customLayouts"] = new List<Dictionary<string, object>>()
+			};
+
+			if (!SupportsMultiview || IsTransmitter)
+			{
+				response["error"] = "Endpoint does not support multiview layout queries";
+				return response;
+			}
+
+			var presetEntries = (List<Dictionary<string, object>>)response["presetLayouts"];
+			var customEntries = (List<Dictionary<string, object>>)response["customLayouts"];
+
+			var knownPresetLayoutIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+			var presetIndex = 1;
+			foreach (var layout in _availablePresetMultiviewLayouts.OrderBy(l => l, StringComparer.OrdinalIgnoreCase))
+			{
+				if (string.IsNullOrWhiteSpace(layout))
+					continue;
+
+				var normalizedLayout = layout.Trim();
+				knownPresetLayoutIds.Add(normalizedLayout);
+
+				presetEntries.Add(new Dictionary<string, object>
+				{
+					["id"] = "preset:" + normalizedLayout,
+					["layoutId"] = normalizedLayout,
+					["index"] = presetIndex++,
+					["source"] = "runtime",
+				});
+			}
+
+			foreach (var preset in GetAllMultiviewPresetsByPrecedence())
+			{
+				if (preset == null || string.IsNullOrWhiteSpace(preset.Layout))
+					continue;
+
+				if (preset.LayoutSource != NhdMultiviewPresetLayoutSource.Controller)
+					continue;
+
+				var normalizedLayout = preset.Layout.Trim();
+				if (knownPresetLayoutIds.Contains(normalizedLayout))
+					continue;
+
+				knownPresetLayoutIds.Add(normalizedLayout);
+				presetEntries.Add(new Dictionary<string, object>
+				{
+					["id"] = "preset:" + normalizedLayout,
+					["layoutId"] = normalizedLayout,
+					["index"] = presetIndex++,
+					["source"] = "configured",
+				});
+			}
+
+			var customIndex = 1;
+			foreach (var customLayout in GetAllCustomMultiviewLayoutsByPrecedence())
+			{
+				if (customLayout == null || string.IsNullOrWhiteSpace(customLayout.Key))
+					continue;
+
+				var normalizedKey = customLayout.Key.Trim();
+				customEntries.Add(new Dictionary<string, object>
+				{
+					["id"] = "custom:" + normalizedKey,
+					["layoutId"] = normalizedKey,
+					["index"] = customIndex++,
+					["mode"] = customLayout.Mode.ToString(),
+					["windowCount"] = (customLayout.Windows ?? new List<NhdCustomMultiviewWindowProperties>()).Count,
+				});
+			}
+
+			response["activePresetLayout"] = ActivePresetMultiviewLayoutName;
+			response["activeCustomLayout"] = ActiveCustomMultiviewLayoutKey;
+
+			Debug.LogMessage(
+				Serilog.Events.LogEventLevel.Information,
+				"[{DeviceKey}] MV layout query: {Payload}",
+				this,
+				Key,
+				JsonConvert.SerializeObject(response));
+
+			return response;
+		}
+
+		/// <summary>
+		/// Returns multiview layouts as JSON for environments that only display primitive devjson return values.
+		/// </summary>
+		public string GetMVLayoutsWithIdsJson()
+		{
+			return JsonConvert.SerializeObject(GetMVLayoutsWithIds());
+		}
+
+		/// <summary>
+		/// Dumps the live, loaded configuration values for this endpoint so the actual deserialized
+		/// state can be inspected from a devjson query. Logs the payload at INFO and returns it as JSON.
+		/// </summary>
+		public string GetEndpointConfigJson()
+		{
+			var payload = new Dictionary<string, object>
+			{
+				["key"] = Key,
+				["name"] = Name,
+				["modelName"] = ModelName,
+				["configAlias"] = Config.Alias,
+				["configuredAlias"] = ConfiguredAlias,
+				["hostname"] = Hostname,
+				["apiEndpointReference"] = ApiEndpointReference,
+				["matrixInputSlot"] = Config.MatrixInputSlot,
+				["matrixOutputSlot"] = Config.MatrixOutputSlot,
+				["supportsMultiview"] = SupportsMultiview,
+				["customMultiviewLayoutCount"] = (Config.CustomMultiviewLayouts ?? new List<NhdCustomMultiviewLayoutProperties>()).Count,
+				["multiviewPresetCount"] = (Config.MultiviewPresets ?? new List<NhdMultiviewPresetProperties>()).Count,
+			};
+
+			var json = JsonConvert.SerializeObject(payload);
+
+			Debug.LogMessage(
+				Serilog.Events.LogEventLevel.Information,
+				"[{DeviceKey}] Endpoint config dump: {Payload}",
+				this,
+				Key,
+				json);
+
+			return json;
+		}
+
+		private IEnumerable<NhdMultiviewPresetProperties> GetAllMultiviewPresetsByPrecedence()
+		{
+			var yieldedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+			foreach (var localPreset in Config.MultiviewPresets ?? new List<NhdMultiviewPresetProperties>())
+			{
+				if (localPreset == null || string.IsNullOrWhiteSpace(localPreset.Key))
+					continue;
+
+				var normalizedKey = localPreset.Key.Trim();
+				if (!yieldedKeys.Add(normalizedKey))
+					continue;
+
+				yield return localPreset;
+			}
+
+			foreach (var sharedPreset in GetControllerMultiviewPresets())
+			{
+				if (sharedPreset == null || string.IsNullOrWhiteSpace(sharedPreset.Key))
+					continue;
+
+				var normalizedKey = sharedPreset.Key.Trim();
+				if (!yieldedKeys.Add(normalizedKey))
+					continue;
+
+				yield return sharedPreset;
+			}
 		}
 
 		public bool FullscreenMVTile(int sourceTileReference)
@@ -1041,50 +1249,6 @@ namespace PepperDash.Essentials.Plugin
 
 		protected void AddUsbOutputPort()
 			=> OutputPorts.Add(new RoutingOutputPort(NhdPortKeys.UsbOutput, NhdRoutingSignalTypes.UsbOutput, eRoutingPortConnectionType.UsbC, NhdPortKeys.UsbOutput, this));
-
-		/// <summary>
-		/// Adds IR routing port(s) based on the configured routing mode.
-		/// ControlSystem: adds irIn — Crestron side, data enters NHD here.
-		/// Device: adds irOut — end-device side, data exits NHD here.
-		/// NotRoutable or null: no routing ports; use SendIrData directly.
-		/// </summary>
-		protected void AddIrPorts(NhdComPortRoutingMode? mode)
-		{
-			switch (mode ?? NhdComPortRoutingMode.NotRoutable)
-			{
-				case NhdComPortRoutingMode.ControlSystem:
-					InputPorts.Add(new RoutingInputPort(NhdPortKeys.IrInput, NhdRoutingSignalTypes.Ir, eRoutingPortConnectionType.None, NhdPortKeys.IrInput, this));
-					break;
-				case NhdComPortRoutingMode.Device:
-					OutputPorts.Add(new RoutingOutputPort(NhdPortKeys.IrOutput, NhdRoutingSignalTypes.Ir, eRoutingPortConnectionType.None, NhdPortKeys.IrOutput, this));
-					break;
-				case NhdComPortRoutingMode.NotRoutable:
-				default:
-					break;
-			}
-		}
-
-		/// <summary>
-		/// Adds RS-232 routing port(s) based on the configured routing mode.
-		/// ControlSystem: adds rs232In — Crestron side, data enters NHD here.
-		/// Device: adds rs232Out — end-device side, data exits NHD here.
-		/// NotRoutable or null: no routing ports; use Send232Command directly.
-		/// </summary>
-		protected void AddRs232Ports(NhdComPortRoutingMode? mode)
-		{
-			switch (mode ?? NhdComPortRoutingMode.NotRoutable)
-			{
-				case NhdComPortRoutingMode.ControlSystem:
-					InputPorts.Add(new RoutingInputPort(NhdPortKeys.Rs232Input, NhdRoutingSignalTypes.Serial, eRoutingPortConnectionType.None, NhdPortKeys.Rs232Input, this));
-					break;
-				case NhdComPortRoutingMode.Device:
-					OutputPorts.Add(new RoutingOutputPort(NhdPortKeys.Rs232Output, NhdRoutingSignalTypes.Serial, eRoutingPortConnectionType.None, NhdPortKeys.Rs232Output, this));
-					break;
-				case NhdComPortRoutingMode.NotRoutable:
-				default:
-					break;
-			}
-		}
 
 		/// <summary>
 		/// Sends a power proxy command. Supported if device supports CEC or RS-232.

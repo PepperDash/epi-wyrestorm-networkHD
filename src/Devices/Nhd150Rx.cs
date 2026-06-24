@@ -16,7 +16,6 @@ namespace PepperDash.Essentials.Plugin
 			AddStreamInputPort();
 			AddHdmiOutputPort(NhdPortKeys.HdmiOutput1);
 			AddAnalogAudioOutputPort();
-			AddRs232Ports(config.Rs232RoutingMode);
 		}
 	}
 }
