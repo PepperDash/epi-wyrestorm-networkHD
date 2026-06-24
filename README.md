@@ -209,7 +209,7 @@ Note: When multiple multiview receivers in a system may use the same layouts/pre
 - Matrix clear route aliases accepted by router input resolution: none, null, off, $off.
 - Single-stream matrix switching is enforced only for outputs that support it.
 	- Multiview outputs are excluded from single-stream matrix switching.
-- CTL session bootstrap requests matrix state, device list, device status, and endpoint notifications.
+- CTL session bootstrap requests matrix state, device list, and device status. Endpoint notifications (online/offline, video found/lost, etc.) are unsolicited and pushed automatically by the controller over the open session; no subscribe command is sent.
 - Matrix state refresh is request-driven and includes a periodic refresh every 30 seconds when session-ready and connected.
 - Matrix refresh requests are throttled (2 seconds).
 - Video lost notifications are debounced (10 seconds) to avoid sync flap churn.
@@ -237,6 +237,9 @@ Common endpoint methods available through device classes include:
 | --- | --- | --- |
 | Route MV tile with layout | `bool RouteMVTile(string inputSlotKey, string outputSlotKey, string layoutName, int tileReference)` | Routes a source slot to a specific MV tile within the named layout |
 | Reprobe layouts | `bool ReprobeMVLayouts()` | queries an endpoint for its preconfigured and custom layouts defined in the CTL |
+| Refresh layout list | `bool RefreshMVLayouts()` | Forces a controller `mscene get` for the endpoint and learns its available preset layouts |
+| Query layouts with ids | `Dictionary<string,object> GetMVLayoutsWithIds()` / `string GetMVLayoutsWithIdsJson()` | Returns available preset/custom layouts with stable ids (`preset:<id>`, `custom:<key>`) and the active layout |
+| Recall layout by id | `bool RecallMVLayout(string id)` | Recalls a layout by the id from the query. Accepts the raw layoutId (`2-1`, `test1`), the prefixed id (`preset:2-1`), or `custom:<key>` |
 | Apply custom layout | `bool ApplyCustomMVLayout(string layoutKey)` |  |
 | Apply custom layout with sources | `bool ApplyCustomMVLayoutWithSources(string layoutKey, IDictionary<int, string> sourceReferencesByWindow)` | used by the apply preset function |
 | Apply preset | `bool ApplyMVPreset(string presetKey)` |  |

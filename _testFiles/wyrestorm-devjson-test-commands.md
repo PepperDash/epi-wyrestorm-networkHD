@@ -69,6 +69,19 @@ devjson:1 {"deviceKey":"NhdRouter","methodName":"ActivateMVLayout","params":["nh
 devjson:1 {"deviceKey":"NhdRouter","methodName":"ActivateMVLayout","params":["nhdRx1","fullscreen"]}
 ```
 
+**Multiview Layout Query & Recall (RX device):**
+```json
+# Refresh the layout list from the controller (mscene get), then query it with ids
+devjson:1 {"deviceKey":"nhdRx1","methodName":"RefreshMVLayouts","params":[]}
+devjson:1 {"deviceKey":"nhdRx1","methodName":"GetMVLayoutsWithIdsJson","params":[]}
+
+# Recall a layout by the id returned from the query above.
+# Accepts the raw layoutId ("2-1", "test1"), the prefixed id ("preset:2-1"), or "custom:<key>".
+devjson:1 {"deviceKey":"nhdRx1","methodName":"RecallMVLayout","params":["2-1"]}
+devjson:1 {"deviceKey":"nhdRx1","methodName":"RecallMVLayout","params":["preset:2-1"]}
+devjson:1 {"deviceKey":"nhdRx1","methodName":"RecallMVLayout","params":["test1"]}
+```
+
 **Device Methods via CTL (Telnet API for direct device control):**
 ```
 Telnet: matrix video set Tx1 Rx1

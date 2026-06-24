@@ -932,6 +932,43 @@ namespace PepperDash.Essentials.Plugin
 		}
 
 		/// <summary>
+		/// Recalls a multiview layout by the id returned from <see cref="GetMVLayoutsWithIds"/>.
+		/// Accepts the raw layout id (for example "2-1" or "test1"), the prefixed preset id
+		/// ("preset:2-1"), or a custom layout id ("custom:&lt;key&gt;"). Intended for devjson calls on RX devices.
+		/// </summary>
+		public bool RecallMVLayout(string id)
+		{
+			if (!SupportsMultiview || IsTransmitter)
+			{
+				Debug.LogError("[{0}] Endpoint does not support multiview layout recall", Key);
+				return false;
+			}
+
+			if (string.IsNullOrWhiteSpace(id))
+			{
+				Debug.LogError("[{0}] Multiview layout id cannot be empty", Key);
+				return false;
+			}
+
+			var trimmedId = id.Trim();
+
+			if (trimmedId.StartsWith("custom:", StringComparison.OrdinalIgnoreCase))
+				return ApplyCustomMVLayout(trimmedId.Substring("custom:".Length).Trim());
+
+			if (trimmedId.StartsWith("preset:", StringComparison.OrdinalIgnoreCase))
+				trimmedId = trimmedId.Substring("preset:".Length).Trim();
+
+			var ctl = DeviceManager.AllDevices.OfType<NhdCtlPro>().FirstOrDefault();
+			if (ctl?.SessionManager == null)
+			{
+				Debug.LogError("[{0}] NHD-CTL session manager is not available for multiview layout recall", Key);
+				return false;
+			}
+
+			return ctl.SessionManager.TryActivateMVLayout(this, this, trimmedId);
+		}
+
+		/// <summary>
 		/// Returns available multiview layouts for this receiver with stable ids.
 		/// Intended for devjson queries on RX devices.
 		/// </summary>
