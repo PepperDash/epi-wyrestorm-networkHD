@@ -1,9 +1,3 @@
-# Wyrestorm NetworkHD Command Reference - Validated & Working
-
-Device keys: nhdCtl, nhdTx1, nhdRx1  
-Aliases (used in Telnet commands): Tx1, Rx1  
-Controller endpoint: nhdCtl (NHD-CTL-PRO at 10.11.50.79:23)  
-Hardware layout: **4-1** (4-tile grid)
 
 ## API Commands (20) - Telnet Syntax
 
@@ -44,7 +38,7 @@ config get ipsetting                     # Get network config
 
 Parameters use `eRoutingSignalType` enum values: `AudioVideo`, `Video`, `Audio`
 
-## Devjson Command Lines - VERIFIED WORKING (15)
+## Devjson Command Lines
 
 **Basic Device Control:**
 ```json
@@ -85,28 +79,3 @@ Telnet: config set device audio volume up analog Rx1
 Telnet: config set device audio volume mute analog Rx1
 Telnet: config get version
 Telnet: config get ipsetting
-```
-
-## Method Reference (Verified)
-
-| Method | Signature | Status | Notes |
-|--------|-----------|--------|-------|
-| RouteMVTile | `RouteMVTile(inputKey, outputKey, layoutName, tileRef)` | ✅ WORKING | Primary tile routing; all 4 tiles queue successfully |
-| FullscreenMVTile | `FullscreenMVTile(outputKey, tileRef)` | ✅ WORKING | Expands tile to fullscreen |
-| ActivateMVLayout | `ActivateMVLayout(outputKey, layoutName)` | ⚠️ QUEUED | Sends command but CTL may timeout |
-| ExecuteSwitch | `ExecuteSwitch(inputKey, outputKey, signalType)` | ✅ WORKING | Basic switch execution |
-| ApplyMVPreset | `ApplyMVPreset(outputKey, presetKey)` | ⚠️ PARTIAL | Use preset key "4-tile"; command sequence sent but CTL queue times out at 2s |
-
-## Known Limitations
-
-1. **Single-stream Route()** - Not applicable to multiview decoders (by design)
-2. **ActivateMVLayout()** - CTL communication timeout on some layouts
-3. **ReturnFromMVFullscreen()** - Requires fullscreen return layout to be configured
-4. **RouteBySlot()** - Slot resolution issue with current config
-5. **ClearRoute()** - Output selector resolution issue
-
----
-
-**Last Updated:** 2026-06-22 (rerun with latest config)  
-**Validation Status:** ✅ PRODUCTION READY  
-**Recommended Primary Method:** RouteMVTile() for all multiview routing
