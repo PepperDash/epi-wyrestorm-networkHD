@@ -18,6 +18,15 @@ mview set <RX> tile <TX:X_Y_W_H:SCALE> # Set tile with TX source
 mscene active <RX> <layout>             # Apply multiview layout to RX
 ```
 
+### Dynamic Multiview Layout (computed at runtime, not from a named config layout)
+```
+# Same wire format as "mview set" custom layouts, but the tile geometry is computed on the fly
+# from a set of sources + priorities (NhdDynamicMultiviewLayoutCalculator) rather than read from
+# customMultiviewLayouts config. Sent by Nhd150Rx.ApplyDynamicLayout via
+# NhdCtlSessionManager.TryApplyDynamicLayout.
+mview set <RX> tile <TX:X_Y_W_H:SCALE> <TX:X_Y_W_H:SCALE> ...
+```
+
 ### Device Control Commands
 ```
 config set device reboot <TX|RX>        # Reboot device
@@ -103,6 +112,34 @@ devjson:1 {"deviceKey":"nhdRx1","methodName":"ApplyMVPreset","params":["fullscre
 # from the CTL-level definitions.
 devjson:1 {"deviceKey":"nhdRx2","methodName":"ApplyMVPreset","params":["4-tile"]}
 devjson:1 {"deviceKey":"nhdRx2","methodName":"ApplyMVPreset","params":["fullscreen-custom"]}
+```
+
+**Dynamic Multiview Layout (RX device — computed at runtime from sources + priority):**
+```json
+# Builds a layout on the fly via NhdDynamicMultiviewLayoutCalculator instead of a named
+# customMultiviewLayouts/multiviewPresets entry. Uses the devjson-friendly overload of
+# ApplyDynamicLayout, which takes parallel primitive arrays (sourceKeys[i] <-> priorities[i], lower
+# number = higher priority) plus the presentation source's TX device key ("" if none active) -
+# devjson's reflection-based dispatcher can't construct the ParticipantSource POCO overload
+# directly from JSON. Tile count is capped by the RX's ConfiguredMaxTileCount (see "maxTileCount"
+# in config, defaults to MaxStreamCount) - lowest-priority sources beyond capacity are dropped.
+
+# No presentation active: even grid, ordered by priority.
+devjson:1 {"deviceKey":"nhdRx1","methodName":"ApplyDynamicLayout","params":[["nhdTx1","nhdTx2"],[0,1],""]}
+
+# Presentation active: tile 1 is the (larger) presentation source; remaining sources fill an
+# equal-size thumbnail strip, ordered by priority.
+devjson:1 {"deviceKey":"nhdRx1","methodName":"ApplyDynamicLayout","params":[["nhdTx1","nhdTx2"],[0,1],"nhdTx3"]}
+```
+
+**Per-Tile Ad-Hoc Routing (RX device — individual `NhdMultiviewTileSink` child devices):**
+```
+# Each tile also exists as its own routable Essentials sink (key: "<rxKey>-tile<N>", 1-based),
+# independent of ApplyDynamicLayout above. It's routable through the standard Essentials routing
+# framework (tie lines / IRunDirectRouteAction / ReleaseAndMakeRoute), e.g. from room code:
+#   someRoom.RunDirectRoute("nhdTx1", "nhdRx1-tile1", eRoutingSignalType.Video);
+# Not devjson-testable directly - ExecuteSwitch/SetCurrentSource take routing-framework object
+# types (RoutingInputPort selectors / IRoutingSource), not devjson-serializable primitives.
 ```
 
 **Device Methods via CTL (Telnet API for direct device control):**

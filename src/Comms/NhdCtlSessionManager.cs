@@ -477,6 +477,45 @@ namespace PepperDash.Essentials.Plugin.Comms
             return sent;
         }
 
+        /// <summary>
+        /// Applies a multiview layout built at runtime (see <see cref="NhdDynamicMultiviewLayoutCalculator"/>)
+        /// rather than from a named preset/custom layout config entry. Each tile's
+        /// <see cref="NhdMultiviewTileState.SourceReference"/> is expected to be an Essentials device
+        /// key, which is resolved here to the corresponding NetworkHD API alias for the wire command.
+        /// </summary>
+        public bool TryApplyDynamicLayout(IKeyed requestedBy, NhdBaseDevice rxEndpoint, IReadOnlyList<NhdMultiviewTileState> tiles)
+        {
+            var source = requestedBy ?? _ctl;
+
+            if (rxEndpoint == null)
+            {
+                Debug.LogError("[{0}] Unable to apply dynamic multiview layout: RX endpoint is null", source.Key);
+                return false;
+            }
+
+            if (!rxEndpoint.SupportsMultiview)
+            {
+                Debug.LogError("[{0}] Endpoint '{1}' does not support dynamic multiview layout", source.Key, rxEndpoint.Key);
+                return false;
+            }
+
+            if (!TryBuildDynamicLayoutCommand(rxEndpoint, tiles, out var command))
+            {
+                Debug.LogError("[{0}] Dynamic multiview layout for endpoint '{1}' has invalid geometry, no tiles, or an unresolvable source reference", source.Key, rxEndpoint.Key);
+                return false;
+            }
+
+            var dynamicSent = NhdApiCommandSender.TrySend(source, command);
+            if (dynamicSent)
+            {
+                // This is a runtime-computed layout, not a named preset/custom layout.
+                rxEndpoint.SetActiveCustomMVLayout(null);
+                RequestMultiviewState(rxEndpoint, source, force: true);
+            }
+
+            return dynamicSent;
+        }
+
         public bool TryApplyMVPreset(IKeyed requestedBy, NhdBaseDevice rxEndpoint, string presetKey)
         {
             var source = requestedBy ?? _ctl;
@@ -2518,6 +2557,61 @@ namespace PepperDash.Essentials.Plugin.Comms
                 "mview set {0} {1} {2}",
                 rxEndpoint.ApiEndpointReference,
                 modeToken,
+                string.Join(" ", descriptors));
+
+            return true;
+        }
+
+        /// <summary>
+        /// Builds an 'mview set' command directly from already-computed tile geometry (see
+        /// <see cref="NhdDynamicMultiviewLayoutCalculator"/>), resolving each tile's source
+        /// reference (an Essentials device key) to its NetworkHD API alias. Unlike
+        /// <see cref="TryBuildScaledCustomLayoutCommand"/>, this does not scale against a configured
+        /// canvas size - the caller is expected to have already computed geometry in actual output
+        /// pixel space.
+        /// </summary>
+        private static bool TryBuildDynamicLayoutCommand(NhdBaseDevice rxEndpoint, IReadOnlyList<NhdMultiviewTileState> tiles, out string command)
+        {
+            command = null;
+
+            if (rxEndpoint == null || tiles == null || tiles.Count == 0)
+                return false;
+
+            var descriptors = new List<string>();
+            foreach (var tile in tiles.OrderBy(t => t.TileNumber))
+            {
+                if (tile == null || tile.Width <= 0 || tile.Height <= 0)
+                    return false;
+
+                var sourceReference = "NULL";
+                if (!string.IsNullOrWhiteSpace(tile.SourceReference))
+                {
+                    var txEndpoint = DeviceManager.GetDeviceForKey(tile.SourceReference.Trim()) as NhdBaseDevice;
+                    if (txEndpoint == null || !txEndpoint.IsTransmitter)
+                        return false;
+
+                    sourceReference = txEndpoint.ApiEndpointReference;
+                }
+
+                var scaleMode = string.Equals(tile.ScaleMode, NhdMultiviewScaleMode.Stretch.ToString(), StringComparison.OrdinalIgnoreCase)
+                    ? "stretch"
+                    : "fit";
+
+                descriptors.Add(string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0}:{1}_{2}_{3}_{4}:{5}",
+                    sourceReference,
+                    tile.X,
+                    tile.Y,
+                    tile.Width,
+                    tile.Height,
+                    scaleMode));
+            }
+
+            command = string.Format(
+                CultureInfo.InvariantCulture,
+                "mview set {0} tile {1}",
+                rxEndpoint.ApiEndpointReference,
                 string.Join(" ", descriptors));
 
             return true;

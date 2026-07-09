@@ -33,5 +33,12 @@ namespace PepperDash.Essentials.Plugin
         public NhdDeviceMode? Mode { get; set; }
         public List<NhdCustomMultiviewLayoutProperties> CustomMultiviewLayouts { get; set; } = new List<NhdCustomMultiviewLayoutProperties>();
         public List<NhdMultiviewPresetProperties> MultiviewPresets { get; set; } = new List<NhdMultiviewPresetProperties>();
+
+        /// <summary>
+        /// Maximum number of multiview tile-sink child devices to create for this decoder.
+        /// Defaults to the device's <see cref="NhdBaseDevice.MaxStreamCount"/> (e.g. 9 for
+        /// NHD-150-RX) when not set. Values greater than MaxStreamCount are clamped down to it.
+        /// </summary>
+        public int? MaxTileCount { get; set; }
     }
 }

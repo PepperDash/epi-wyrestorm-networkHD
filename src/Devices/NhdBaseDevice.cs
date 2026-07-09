@@ -109,6 +109,17 @@ namespace PepperDash.Essentials.Plugin
 		public virtual int MaxStreamCount => 1;
 
 		/// <summary>
+		/// Number of multiview tile-sink child devices to create for this decoder (see
+		/// <see cref="NhdDeviceProperties.MaxTileCount"/>). Defaults to <see cref="MaxStreamCount"/>
+		/// when not configured; configured values greater than <see cref="MaxStreamCount"/> are
+		/// clamped down to it.
+		/// </summary>
+		public int ConfiguredMaxTileCount =>
+			Config.MaxTileCount.HasValue && Config.MaxTileCount.Value > 0
+				? Math.Min(Config.MaxTileCount.Value, MaxStreamCount)
+				: MaxStreamCount;
+
+		/// <summary>
 		/// Runtime multi-stream layout mode for devices that support more than one stream window.
 		/// Setting this on single-stream devices throws an exception.
 		/// </summary>

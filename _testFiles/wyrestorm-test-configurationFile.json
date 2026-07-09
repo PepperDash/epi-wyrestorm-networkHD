@@ -140,6 +140,7 @@
         "matrixOutputSlot": 1,
         "alias": "Rx1",
         "rs232RoutingMode": "Enabled",
+        "maxTileCount": 4,
         "customMultiviewLayouts": [
           {
             "key": "fullscreen",
