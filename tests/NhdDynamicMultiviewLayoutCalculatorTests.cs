@@ -5,11 +5,15 @@ using Xunit;
 namespace PepperDash.Essentials.Plugin.WyreStorm.Tests;
 
 /// <summary>
-/// Structural/shape tests for <c>NhdDynamicMultiviewLayoutCalculator</c> and its
-/// <c>ParticipantSource</c> nested type, matching the conventions used elsewhere in this test
-/// project.
+/// Structural/shape tests for <c>NhdDynamicMultiviewLayoutCalculator</c>, matching the conventions
+/// used elsewhere in this test project.
 ///
-/// Note: this project loads the plugin assembly via <see cref="System.Reflection.MetadataLoadContext"/>
+/// Note: the participant-source DTO (<c>MultiviewParticipantSource</c>) now lives in
+/// PepperDash.Essentials.Core.DeviceTypeInterfaces (alongside the <c>IHasDynamicMultiviewLayout</c>
+/// interface Nhd150Rx implements), not as a nested type in this plugin - so it isn't re-tested
+/// here; see the Essentials repo's own tests for that.
+///
+/// This project loads the plugin assembly via <see cref="System.Reflection.MetadataLoadContext"/>
 /// (see <see cref="AssemblyFixture"/>), which supports metadata inspection only - it cannot invoke
 /// methods (the plugin depends on Crestron SimplSharp assemblies that aren't available/executable
 /// outside a real Crestron runtime). So unlike a typical "pure algorithm" class, the calculator's
@@ -22,9 +26,6 @@ public class NhdDynamicMultiviewLayoutCalculatorTests
     private static Type CalculatorType =>
         AssemblyFixture.PluginAssembly.GetType("PepperDash.Essentials.Plugin.NhdDynamicMultiviewLayoutCalculator")!;
 
-    private static Type ParticipantSourceType =>
-        AssemblyFixture.PluginAssembly.GetType("PepperDash.Essentials.Plugin.NhdDynamicMultiviewLayoutCalculator+ParticipantSource")!;
-
     [Fact]
     public void Calculator_Type_Exists()
     {
@@ -36,14 +37,6 @@ public class NhdDynamicMultiviewLayoutCalculatorTests
     {
         CalculatorType.IsAbstract.Should().BeTrue("static classes are abstract+sealed at the IL level");
         CalculatorType.IsSealed.Should().BeTrue();
-    }
-
-    [Fact]
-    public void ParticipantSource_Type_Exists_With_Expected_Properties()
-    {
-        ParticipantSourceType.Should().NotBeNull();
-        ParticipantSourceType.GetProperty("SourceKey").Should().NotBeNull();
-        ParticipantSourceType.GetProperty("Priority").Should().NotBeNull();
     }
 
     [Fact]

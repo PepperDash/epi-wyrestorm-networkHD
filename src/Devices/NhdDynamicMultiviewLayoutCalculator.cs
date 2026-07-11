@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using PepperDash.Essentials.Core.DeviceTypeInterfaces;
 using PepperDash.Essentials.Plugin.Enums;
 
 namespace PepperDash.Essentials.Plugin
@@ -32,22 +33,6 @@ namespace PepperDash.Essentials.Plugin
 		private const int DefaultCanvasHeight = 1080;
 
 		/// <summary>
-		/// A source eligible for placement in the dynamic layout, along with its priority.
-		/// Lower priority values are placed first (i.e. lower number = higher priority).
-		/// </summary>
-		public sealed class ParticipantSource
-		{
-			public ParticipantSource(string sourceKey, int priority)
-			{
-				SourceKey = sourceKey;
-				Priority = priority;
-			}
-
-			public string SourceKey { get; }
-			public int Priority { get; }
-		}
-
-		/// <summary>
 		/// Computes the tile layout for the given participant sources and optional presentation source.
 		/// </summary>
 		/// <param name="participantSources">Sources to place in participant tiles, each with a priority.</param>
@@ -57,7 +42,7 @@ namespace PepperDash.Essentials.Plugin
 		/// <param name="maxTileCount">Maximum number of tiles the decoder supports. Lowest-priority participants are dropped if the requested set exceeds capacity.</param>
 		/// <returns>Computed tile states, ordered by tile number (1-based).</returns>
 		public static IReadOnlyList<NhdMultiviewTileState> CalculateLayout(
-			IReadOnlyList<ParticipantSource> participantSources,
+			IReadOnlyList<MultiviewParticipantSource> participantSources,
 			string presentationSourceKey,
 			int canvasWidth,
 			int canvasHeight,
@@ -72,7 +57,7 @@ namespace PepperDash.Essentials.Plugin
 				? Math.Max(0, effectiveMaxTileCount - 1)
 				: effectiveMaxTileCount;
 
-			var orderedParticipants = (participantSources ?? Array.Empty<ParticipantSource>())
+			var orderedParticipants = (participantSources ?? Array.Empty<MultiviewParticipantSource>())
 				.Where(p => p != null && !string.IsNullOrWhiteSpace(p.SourceKey))
 				.OrderBy(p => p.Priority)
 				.Take(availableParticipantTiles)
@@ -104,7 +89,7 @@ namespace PepperDash.Essentials.Plugin
 		}
 
 		private static IEnumerable<NhdMultiviewTileState> BuildThumbnailStrip(
-			IReadOnlyList<ParticipantSource> participants,
+			IReadOnlyList<MultiviewParticipantSource> participants,
 			int canvasWidth,
 			int canvasHeight,
 			int startTileNumber)
@@ -134,7 +119,7 @@ namespace PepperDash.Essentials.Plugin
 		}
 
 		private static IEnumerable<NhdMultiviewTileState> BuildEvenGrid(
-			IReadOnlyList<ParticipantSource> participants,
+			IReadOnlyList<MultiviewParticipantSource> participants,
 			int canvasWidth,
 			int canvasHeight)
 		{
