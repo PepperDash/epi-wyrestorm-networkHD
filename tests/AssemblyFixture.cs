@@ -31,6 +31,13 @@ public static class AssemblyFixture
     public static MetadataLoadContext Context => LazyContext.Value;
     public static Assembly PluginAssembly => LazyAssembly.Value;
 
+    // src/bin/{Config}/net8/ -> src/
+    private static string PluginProjectDir =>
+        Path.GetFullPath(Path.Combine(PluginOutputDir, "..", "..", ".."));
+
+    private static string PluginProjectAssetsJsonPath =>
+        Path.Combine(PluginProjectDir, "obj", "project.assets.json");
+
     private static MetadataLoadContext CreateContext()
     {
         var runtimeDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
@@ -45,14 +52,30 @@ public static class AssemblyFixture
         var depsJsonPath = Path.ChangeExtension(PluginDllPath, ".deps.json");
         if (File.Exists(depsJsonPath))
         {
-            foreach (var path in ResolveDepsJsonAssemblies(depsJsonPath))
+            foreach (var path in ResolveNuGetLibraryAssemblies(depsJsonPath))
+                dllByName.TryAdd(Path.GetFileName(path), path);
+        }
+
+        // Packages referenced with <ExcludeAssets>runtime</ExcludeAssets> (e.g. PepperDashEssentials,
+        // so the plugin doesn't bundle assemblies the Essentials host already provides) never appear
+        // in the plugin's own output dir or deps.json - including their transitive dependencies, like
+        // PepperDash.Essentials.Core. Those are still recorded (with a resolvable package path) in the
+        // plugin's own project.assets.json, so fall back to that for anything not already found above.
+        if (File.Exists(PluginProjectAssetsJsonPath))
+        {
+            foreach (var path in ResolveNuGetLibraryAssemblies(PluginProjectAssetsJsonPath))
                 dllByName.TryAdd(Path.GetFileName(path), path);
         }
 
         return new MetadataLoadContext(new PathAssemblyResolver(dllByName.Values));
     }
 
-    private static IEnumerable<string> ResolveDepsJsonAssemblies(string depsJsonPath)
+    /// <summary>
+    /// Resolves NuGet package assembly paths from a "libraries" section shaped like a .deps.json or
+    /// project.assets.json (both use the same <c>{ "type": "package", "path": "..." }</c> shape per
+    /// library entry).
+    /// </summary>
+    private static IEnumerable<string> ResolveNuGetLibraryAssemblies(string jsonPath)
     {
         // Honor NUGET_PACKAGES (common in CI / enterprise setups); fall back to the default.
         var nugetDir = Environment.GetEnvironmentVariable("NUGET_PACKAGES");
@@ -61,7 +84,7 @@ public static class AssemblyFixture
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 ".nuget", "packages");
 
-        using var stream = File.OpenRead(depsJsonPath);
+        using var stream = File.OpenRead(jsonPath);
         using var doc = JsonDocument.Parse(stream);
 
         if (!doc.RootElement.TryGetProperty("libraries", out var libraries))

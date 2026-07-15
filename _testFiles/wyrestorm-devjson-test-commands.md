@@ -135,9 +135,13 @@ devjson:1 {"deviceKey":"nhdRx1","methodName":"ApplyDynamicLayout","params":[["nh
 **Per-Tile Ad-Hoc Routing (RX device — individual `NhdMultiviewTileSink` child devices):**
 ```
 # Each tile also exists as its own routable Essentials sink (key: "<rxKey>-tile<N>", 1-based),
-# independent of ApplyDynamicLayout above. It's routable through the standard Essentials routing
-# framework (tie lines / IRunDirectRouteAction / ReleaseAndMakeRoute), e.g. from room code:
+# independent of ApplyDynamicLayout above. It's registered with DeviceManager and routable through
+# the standard Essentials routing framework (tie lines / IRunDirectRouteAction / ReleaseAndMakeRoute),
+# e.g. from room code:
 #   someRoom.RunDirectRoute("nhdTx1", "nhdRx1-tile1", eRoutingSignalType.Video);
+# It's also reachable programmatically via the parent RX (which implements IRoutingSinkWithLayouts):
+#   var rx = DeviceManager.GetDeviceForKey("nhdRx1") as IRoutingSinkWithLayouts;
+#   var tileSink = rx?.WindowTileSinks[1] as IRoutingSinkWithFeedback;
 # Not devjson-testable directly - ExecuteSwitch/SetCurrentSource take routing-framework object
 # types (RoutingInputPort selectors / IRoutingSource), not devjson-serializable primitives.
 ```

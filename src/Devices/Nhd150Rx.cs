@@ -14,24 +14,35 @@ namespace PepperDash.Essentials.Plugin
 	/// destination, rather than assumed to be a fixed direct physical connection. Also implements
 	/// <see cref="IHasDynamicMultiviewLayout"/> (defined in Essentials Core) so consumers like a room
 	/// plugin can drive dynamic layouts without taking a compile-time dependency on this plugin.
+	/// Also implements <see cref="IRoutingSinkWithLayouts"/> so its per-tile sinks can be reached
+	/// programmatically via the parent device, in addition to being individually registered with
+	/// <see cref="DeviceManager"/> - see <see cref="WindowTileSinks"/> for details.
 	/// </summary>
-	public class Nhd150Rx : NhdBaseDevice, IRoutingSource, IHasDynamicMultiviewLayout
+	public class Nhd150Rx : NhdBaseDevice, IRoutingSource, IHasDynamicMultiviewLayout, IRoutingSinkWithLayouts
 	{
+
+		/// <summary>
+		/// The multiview tile-sink child devices for this decoder, one per potential window slot
+		/// (see <see cref="NhdBaseDevice.ConfiguredMaxTileCount"/>), keyed by 1-based tile number.
+		/// Each is also registered with <see cref="DeviceManager"/>, so it can be targeted directly by
+		/// string-key routing APIs (tie lines / <c>IRunDirectRouteAction.RunDirectRoute</c>) as well as
+		/// programmatically via this dictionary (per <see cref="IRoutingSinkWithLayouts"/>).
+		/// </summary>
+		public Dictionary<int, IRoutingSinkWithFeedback> WindowTileSinks { get; } = new Dictionary<int, IRoutingSinkWithFeedback>();
+
 		public override bool IsTransmitter => false;
 		public override bool SupportsCec => true;
 		public override bool SupportsIr => false;
 		public override bool Supports232 => true;
 		public override int MaxStreamCount => 9;
 
-		private readonly List<NhdMultiviewTileSink> _tileSinks = new List<NhdMultiviewTileSink>();
-
 		/// <summary>
-		/// The multiview tile-sink child devices for this decoder, one per potential window slot
-		/// (see <see cref="NhdBaseDevice.ConfiguredMaxTileCount"/>). Each is independently routable
-		/// via the standard Essentials routing framework (IRunDirectRouteAction/tie lines), in
-		/// addition to being driven in bulk by the dynamic multiview layout APIs.
+		/// The multiview tile-sink child devices for this decoder, one per potential window slot.
+		/// Thin, concretely-typed view over <see cref="WindowTileSinks"/> for callers within this
+		/// plugin that need <see cref="NhdMultiviewTileSink"/>-specific members.
 		/// </summary>
-		public IReadOnlyList<NhdMultiviewTileSink> TileSinks => _tileSinks;
+		public IReadOnlyList<NhdMultiviewTileSink> TileSinks
+			=> WindowTileSinks.Values.OfType<NhdMultiviewTileSink>().ToList();
 
 		public Nhd150Rx(string key, string name, NhdDeviceProperties config)
 			: base(key, name, config, "NHD-150-RX")
@@ -43,7 +54,7 @@ namespace PepperDash.Essentials.Plugin
 			for (var tileNumber = 1; tileNumber <= ConfiguredMaxTileCount; tileNumber++)
 			{
 				var tileSink = new NhdMultiviewTileSink(this, tileNumber);
-				_tileSinks.Add(tileSink);
+				WindowTileSinks.Add(tileNumber, tileSink);
 				DeviceManager.AddDevice(tileSink);
 			}
 		}
@@ -52,7 +63,7 @@ namespace PepperDash.Essentials.Plugin
 		/// Gets the tile-sink for the given 1-based tile number, or null if out of range.
 		/// </summary>
 		public NhdMultiviewTileSink GetTileSink(int tileNumber)
-			=> _tileSinks.Find(t => t.TileNumber == tileNumber);
+			=> WindowTileSinks.TryGetValue(tileNumber, out var tileSink) ? tileSink as NhdMultiviewTileSink : null;
 
 		/// <summary>
 		/// Computes a multiview layout at runtime from a set of participant sources with priority
@@ -125,7 +136,7 @@ namespace PepperDash.Essentials.Plugin
 				.Where(t => t != null)
 				.ToDictionary(t => t.TileNumber);
 
-			foreach (var tileSink in _tileSinks)
+			foreach (var tileSink in WindowTileSinks.Values.OfType<NhdMultiviewTileSink>())
 			{
 				tilesByNumber.TryGetValue(tileSink.TileNumber, out var tile);
 

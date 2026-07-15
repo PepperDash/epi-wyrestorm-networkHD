@@ -10,10 +10,13 @@ namespace PepperDash.Essentials.Plugin.Routing;
 /// <summary>
 /// Represents a single tile/window of a multiview-capable NetworkHD decoder's active layout,
 /// modeled as its own Essentials routing sink (<see cref="IRoutingSinkWithFeedback"/>).
-/// This lets a tile be routed to independently via the standard Essentials routing framework
-/// (e.g. IRunDirectRouteAction / tie lines), in addition to being driven in bulk by the parent
-/// decoder's dynamic multiview layout APIs. One instance is created per potential window slot
-/// (see <see cref="NhdBaseDevice.ConfiguredMaxTileCount"/>) when the parent decoder is constructed.
+/// Registered with <see cref="DeviceManager"/> (key: <c>"{parentKey}-tile{N}"</c>), so it can be
+/// targeted directly by string-key routing APIs (tie lines / <c>IRunDirectRouteAction</c>), in
+/// addition to being reachable programmatically via the parent decoder (which implements
+/// <see cref="IRoutingSinkWithLayouts"/>) by indexing into its <c>WindowTileSinks</c> dictionary by
+/// this tile's <see cref="TileNumber"/>. Also driven in bulk by the parent decoder's dynamic
+/// multiview layout APIs. One instance is created per potential window slot (see
+/// <see cref="NhdBaseDevice.ConfiguredMaxTileCount"/>) when the parent decoder is constructed.
 /// </summary>
 public class NhdMultiviewTileSink : EssentialsDevice, IRoutingSinkWithFeedback
 {
@@ -128,6 +131,7 @@ public class NhdMultiviewTileSink : EssentialsDevice, IRoutingSinkWithFeedback
 		CurrentSourceKeys[signalType] = sourceDevice?.Key ?? string.Empty;
 
 		CurrentSourcesChanged?.Invoke(this, new CurrentSourcesChangedEventArgs(signalType, previousSource, sourceDevice));
+		InputChanged?.Invoke(this, CurrentInputPort);
 	}
 
 	/// <summary>

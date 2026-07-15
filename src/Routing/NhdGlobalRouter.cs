@@ -6,6 +6,7 @@ using PepperDash.Core.Logging;
 using PepperDash.Essentials.Core;
 using PepperDash.Essentials.Core.Routing;
 using PepperDash.Essentials.Plugin.Comms;
+using PepperDash.Essentials.Plugin.Mock;
 
 namespace PepperDash.Essentials.Plugin.Routing;
 
@@ -777,6 +778,10 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingMidpointWithFeedback
                 .Where(d => d.IsTransmitter)
                 .ToList();
 
+            var mockTransmitters = DeviceManager
+                .AllDevices.OfType<MockNhdTx>()
+                .ToList();
+
             var receiverSlots = DeviceManager
                 .AllDevices.OfType<NhdBaseDevice>()
                 .Where(IsMatrixOutputSlotCandidate)
@@ -786,12 +791,16 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingMidpointWithFeedback
                 .Where(IsMatrixTieLineReceiver)
                 .ToList();
 
-            InputSlots = DeviceManager
-                .AllDevices.OfType<NhdBaseDevice>()
-                .Where(d => d.IsTransmitter)
+            InputSlots = transmitters
                 .Select(d => new NhdMatrixInput(d))
                 .Cast<INhdInputSlot>()
                 .ToDictionary(i => i.Key, i => i);
+
+            foreach (var mockTx in mockTransmitters)
+            {
+                var mockInput = new MockNhdMatrixInput(mockTx);
+                InputSlots[mockInput.Key] = mockInput;
+            }
 
             this.LogDebug("Total inputs: {count}", InputSlots.Count);
 
@@ -809,24 +818,12 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingMidpointWithFeedback
 
             // Build router ports so tie lines can connect to them for each available endpoint routing port.
             foreach (var tx in transmitters)
-            {
-                foreach (var endpointOutputPort in tx.OutputPorts)
-                {
-                    var routerPortKey = GetRouterInputPortKeyForEndpointPort(tx.Key, endpointOutputPort.Key);
-                    if (string.IsNullOrWhiteSpace(routerPortKey))
-                        continue;
+                AddInputPortsForTransmitter(tx.Key, tx.OutputPorts, tx);
 
-                    if (InputPorts.Any(p => string.Equals(p.Key, routerPortKey, StringComparison.OrdinalIgnoreCase)))
-                        continue;
-
-                    InputPorts.Add(new RoutingInputPort(
-                        routerPortKey,
-                        endpointOutputPort.Type,
-                        endpointOutputPort.ConnectionType,
-                        tx,
-                        this));
-                }
-            }
+            // Mock transmitters (encoders) get the exact same router-input-port treatment as real
+            // ones, so config/dev-tools consumers can address them uniformly through NhdRouter.
+            foreach (var mockTx in mockTransmitters)
+                AddInputPortsForTransmitter(mockTx.Key, mockTx.OutputPorts, mockTx);
 
             foreach (var rx in matrixTieLineReceivers)
             {
@@ -847,10 +844,58 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingMidpointWithFeedback
                         this));
                 }
             }
+
+            // Multiview decoders (real Nhd150Rx and mock MockNhdRx alike, via the shared
+            // IRoutingSinkWithLayouts interface) aren't addressable as a single output above - each
+            // window tile is independently routable, so the router gets one output port per tile
+            // instead, keyed to match the tile sink's own DeviceManager key ("{rxKey}-tile{N}").
+            foreach (var layoutParent in DeviceManager.AllDevices.OfType<IRoutingSinkWithLayouts>())
+            {
+                foreach (var tileSink in layoutParent.WindowTileSinks.Values)
+                {
+                    if (tileSink is not IKeyed keyedTile || string.IsNullOrEmpty(keyedTile.Key))
+                        continue;
+
+                    var routerPortKey = keyedTile.Key;
+                    if (OutputPorts.Any(p => string.Equals(p.Key, routerPortKey, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+
+                    var tilePort = tileSink.InputPorts.FirstOrDefault();
+                    var tileSignalType = tilePort?.Type ?? eRoutingSignalType.AudioVideo;
+                    var tileConnectionType = tilePort?.ConnectionType ?? eRoutingPortConnectionType.Streaming;
+
+                    OutputPorts.Add(new RoutingOutputPort(
+                        routerPortKey,
+                        tileSignalType,
+                        tileConnectionType,
+                        tileSink,
+                        this));
+                }
+            }
         }
         catch (Exception ex)
         {
             Debug.LogMessage(ex, "Exception building MatrixRouting: {message}", this, ex.Message);
+        }
+    }
+
+    private void AddInputPortsForTransmitter(string endpointKey, RoutingPortCollection<RoutingOutputPort> endpointOutputPorts, IKeyed selector)
+    {
+        foreach (var endpointOutputPort in endpointOutputPorts)
+        {
+            var routerPortKey = GetRouterInputPortKeyForEndpointPort(endpointKey, endpointOutputPort.Key);
+            if (string.IsNullOrWhiteSpace(routerPortKey))
+                continue;
+
+            if (InputPorts.Any(p => string.Equals(p.Key, routerPortKey, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            InputPorts.Add(new RoutingInputPort(
+                routerPortKey,
+                endpointOutputPort.Type,
+                endpointOutputPort.ConnectionType,
+                selector,
+                this));
         }
     }
 
@@ -860,6 +905,11 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingMidpointWithFeedback
         {
             var transmitters = DeviceManager.AllDevices.OfType<NhdBaseDevice>().Where(d => d.IsTransmitter).ToList();
             NhdTieLineConnector.AddTieLinesForTransmitters(transmitters);
+
+            // NOTE: mock transmitters and multiview tiles deliberately do NOT get equivalent tie
+            // lines here (see AddTieLinesForTransmitters(IEnumerable<MockNhdTx>) and
+            // AddTieLinesForTiles below, both still present but unused) - see the comment on
+            // AddTieLinesForTiles for why wiring them up crashes Essentials at boot.
 
             var receiverCandidates = DeviceManager
                 .AllDevices.OfType<NhdBaseDevice>()
@@ -883,6 +933,9 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingMidpointWithFeedback
                 .ToList();
 
             NhdTieLineConnector.AddTieLinesForReceivers(receivers);
+
+            // Deliberately NOT calling NhdTieLineConnector.AddTieLinesForTiles here - see its doc
+            // comment for why tying tiles through the router blows up boot-time route mapping.
         }
         catch (Exception ex)
         {

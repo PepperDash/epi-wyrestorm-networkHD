@@ -67,7 +67,9 @@ public class NhdDynamicMultiviewLayoutCalculatorTests
     {
         var content = AssemblyFixture.FindSourceForClass("NhdDynamicMultiviewLayoutCalculator");
         content.Should().NotBeNull();
-        Regex.IsMatch(content!, @"BuildPresentationTile\([^)]*\)[\s\S]{0,120}new NhdMultiviewTileState\(\s*1,")
+        // Window widened from 120: the method computes an intermediate `width` value before
+        // constructing the tile, pushing the actual constructor call further from the signature.
+        Regex.IsMatch(content!, @"BuildPresentationTile\([^)]*\)[\s\S]{0,250}new NhdMultiviewTileState\(\s*1,")
             .Should().BeTrue("the presentation tile should always be assigned tile number 1");
     }
 
