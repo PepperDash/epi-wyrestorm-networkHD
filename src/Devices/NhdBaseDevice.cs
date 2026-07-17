@@ -142,6 +142,60 @@ namespace PepperDash.Essentials.Plugin
 		public event EventHandler<NhdDeviceBoolStateChangedEventArgs> OnlineStateChanged;
 		public event EventHandler<NhdDeviceBoolStateChangedEventArgs> InputSyncStateChanged;
 
+		/// <summary>
+		/// Raised whenever the current multiview canvas shape, a tile's geometry/stacking order, or a
+		/// tile's routed source changes (see <see cref="SetMVRuntimeState(NhdMultiStreamMode, IReadOnlyList{NhdMultiviewTileState})"/>).
+		/// Satisfies <see cref="IRoutingSinkWithLayoutState.LayoutChanged"/> for subclasses (e.g.
+		/// <see cref="Nhd150Rx"/>) that declare that interface.
+		/// </summary>
+		public event EventHandler<MultiviewLayoutStateEventArgs> LayoutChanged;
+
+		/// <summary>
+		/// Gets the current multiview canvas/tile layout in generic, product-agnostic form, or null if
+		/// this device doesn't support multiview or has no active layout. Satisfies
+		/// <see cref="IRoutingSinkWithLayoutState.CurrentLayout"/> for subclasses that declare that
+		/// interface. Tile positions/sizes are expressed in the same pixel space as
+		/// <see cref="HdmiOutResolutionWidth"/>/<see cref="HdmiOutResolutionHeight"/> (falling back to
+		/// <see cref="NhdDynamicMultiviewLayoutCalculator.DefaultCanvasWidth"/>/<see cref="NhdDynamicMultiviewLayoutCalculator.DefaultCanvasHeight"/>
+		/// when the output resolution isn't known yet).
+		/// </summary>
+		public MultiviewLayoutState CurrentLayout => BuildCurrentLayoutState();
+
+		private MultiviewLayoutState BuildCurrentLayoutState()
+		{
+			if (!SupportsMultiview || _activeMultiviewTiles.Count == 0)
+				return null;
+
+			var hasResolution = TryGetHdmiOutResolutionDimensions(out var width, out var height);
+			var canvasWidth = hasResolution ? width : NhdDynamicMultiviewLayoutCalculator.DefaultCanvasWidth;
+			var canvasHeight = hasResolution ? height : NhdDynamicMultiviewLayoutCalculator.DefaultCanvasHeight;
+
+			return new MultiviewLayoutState
+			{
+				CanvasWidth = canvasWidth,
+				CanvasHeight = canvasHeight,
+				Tiles = _activeMultiviewTiles.Values
+					.OrderBy(t => t.TileNumber)
+					.Select(t => new MultiviewTileState
+					{
+						TileNumber = t.TileNumber,
+						TileSinkKey = $"{Key}-tile{t.TileNumber}",
+						X = t.X,
+						Y = t.Y,
+						Width = t.Width,
+						Height = t.Height,
+						ZOrder = t.ZOrder,
+						SourceDeviceKey = string.IsNullOrWhiteSpace(t.SourceReference) ? null : t.SourceReference,
+					})
+					.ToList(),
+			};
+		}
+
+		private void RaiseLayoutChanged()
+		{
+			LayoutChanged?.Invoke(this, new MultiviewLayoutStateEventArgs(CurrentLayout));
+		}
+
 		protected virtual bool AutoStartCommunicationMonitorInBase => true;
 
 		protected virtual StatusMonitorBase BuildCommunicationMonitor()
@@ -212,6 +266,8 @@ namespace PepperDash.Essentials.Plugin
 				_activeMultiviewAudioWindow = null;
 				_activeMultiviewAudioSeparateSourceReference = null;
 				_activeMultiviewAudioSourceReference = null;
+
+				RaiseLayoutChanged();
 			}
 
 			if (!isOnline)
@@ -405,6 +461,8 @@ namespace PepperDash.Essentials.Plugin
 			RefreshActiveMultiviewAudioSourceReference();
 
 			MultiviewStateLastRefreshUtc = DateTime.UtcNow;
+
+			RaiseLayoutChanged();
 		}
 
 		public bool TryGetActiveMVTile(int tileReference, out NhdMultiviewTileState tile)

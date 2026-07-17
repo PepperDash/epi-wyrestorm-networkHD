@@ -16,9 +16,13 @@ namespace PepperDash.Essentials.Plugin
 	/// plugin can drive dynamic layouts without taking a compile-time dependency on this plugin.
 	/// Also implements <see cref="IRoutingSinkWithLayouts"/> so its per-tile sinks can be reached
 	/// programmatically via the parent device, in addition to being individually registered with
-	/// <see cref="DeviceManager"/> - see <see cref="WindowTileSinks"/> for details.
+	/// <see cref="DeviceManager"/> - see <see cref="WindowTileSinks"/> for details. Also implements
+	/// <see cref="IRoutingSinkWithLayoutState"/> (<see cref="NhdBaseDevice.CurrentLayout"/> /
+	/// <see cref="NhdBaseDevice.LayoutChanged"/>) so a generic, product-agnostic snapshot of the
+	/// active canvas/tile geometry and routed sources can be rendered by a React UI or the developer
+	/// tools Routing page.
 	/// </summary>
-	public class Nhd150Rx : NhdBaseDevice, IRoutingSource, IHasDynamicMultiviewLayout, IRoutingSinkWithLayouts
+	public class Nhd150Rx : NhdBaseDevice, IRoutingSource, IHasDynamicMultiviewLayout, IRoutingSinkWithLayouts, IRoutingSinkWithLayoutState
 	{
 
 		/// <summary>
@@ -130,6 +134,15 @@ namespace PepperDash.Essentials.Plugin
 			return ApplyDynamicLayout(participantSources, presentationSourceKey);
 		}
 
+		/// <summary>
+		/// Eagerly syncs each tile-sink's current-source feedback to the given layout, and updates
+		/// this device's <see cref="NhdBaseDevice.CurrentLayout"/>/<see cref="NhdBaseDevice.LayoutChanged"/>
+		/// state to match (via <see cref="NhdBaseDevice.SetMVRuntimeState(NhdMultiStreamMode, System.Collections.Generic.IReadOnlyList{NhdMultiviewTileState})"/>),
+		/// ahead of hardware feedback confirming the same state (see
+		/// <c>NhdCtlSessionManager.FinalizePendingMviewInformationEntry</c>), so consumers (tile-sink
+		/// routing feedback and the generic multiview layout state) reflect a just-applied dynamic
+		/// layout immediately rather than waiting on a round trip to the decoder.
+		/// </summary>
 		private void SyncTileSinksToLayout(IReadOnlyList<NhdMultiviewTileState> tiles)
 		{
 			var tilesByNumber = (tiles ?? new List<NhdMultiviewTileState>())
@@ -147,6 +160,8 @@ namespace PepperDash.Essentials.Plugin
 
 				tileSink.UpdateCurrentSourceState(eRoutingSignalType.Video, sourceDevice);
 			}
+
+			SetMVRuntimeState(MultiStreamMode, tiles);
 		}
 	}
 }

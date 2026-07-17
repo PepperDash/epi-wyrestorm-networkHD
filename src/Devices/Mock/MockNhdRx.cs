@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json;
@@ -26,16 +27,19 @@ namespace PepperDash.Essentials.Plugin.Mock
 	/// <see cref="Nhd150Rx"/>) for local development/testing of routing and dynamic multiview
 	/// layouts without real hardware or a real NHD-CTL controller. Implements the same
 	/// routing-relevant interfaces as a real decoder - <see cref="IRoutingSource"/>,
-	/// <see cref="IHasDynamicMultiviewLayout"/>, and <see cref="IRoutingSinkWithLayouts"/> - but
+	/// <see cref="IHasDynamicMultiviewLayout"/>, <see cref="IRoutingSinkWithLayouts"/>, and
+	/// <see cref="IRoutingSinkWithLayoutState"/> - but
 	/// <see cref="ApplyDynamicLayout(IReadOnlyList{MultiviewParticipantSource}, string)"/> only
 	/// computes a layout with the real <see cref="NhdDynamicMultiviewLayoutCalculator"/> and updates
 	/// each mock tile-sink's own bookkeeping/feedback directly - it never talks to a controller or
 	/// any real hardware. This is enough to exercise the full dynamic-layout algorithm and the
-	/// routing dev tools' live feedback end to end.
+	/// routing dev tools' live feedback (including the generic multiview layout/tile mock-up) end
+	/// to end.
 	/// </summary>
-	public class MockNhdRx : EssentialsDevice, IRoutingSource, IHasDynamicMultiviewLayout, IRoutingSinkWithLayouts
+	public class MockNhdRx : EssentialsDevice, IRoutingSource, IHasDynamicMultiviewLayout, IRoutingSinkWithLayouts, IRoutingSinkWithLayoutState
 	{
 		private readonly int _maxTileCount;
+		private readonly Dictionary<int, NhdMultiviewTileState> _activeTiles = new Dictionary<int, NhdMultiviewTileState>();
 
 		/// <inheritdoc />
 		public RoutingPortCollection<RoutingOutputPort> OutputPorts { get; } = new RoutingPortCollection<RoutingOutputPort>();
@@ -58,7 +62,7 @@ namespace PepperDash.Essentials.Plugin.Mock
 
 			OutputPorts.Add(new RoutingOutputPort(
 				NhdPortKeys.HdmiOutput1,
-				eRoutingSignalType.AudioVideo,
+				eRoutingSignalType.Video,
 				eRoutingPortConnectionType.Hdmi,
 				NhdPortKeys.HdmiOutput1,
 				this));
@@ -69,6 +73,13 @@ namespace PepperDash.Essentials.Plugin.Mock
 				WindowTileSinks.Add(tileNumber, tileSink);
 				DeviceManager.AddDevice(tileSink);
 			}
+
+			OutputPorts.Add(new RoutingOutputPort(
+				NhdPortKeys.AnalogAudioOutput,
+				eRoutingSignalType.Audio,
+				eRoutingPortConnectionType.LineAudio,
+				NhdPortKeys.AnalogAudioOutput,
+				this));
 		}
 
 		/// <summary>
@@ -76,6 +87,42 @@ namespace PepperDash.Essentials.Plugin.Mock
 		/// </summary>
 		public MockNhdMultiviewTileSink GetTileSink(int tileNumber)
 			=> WindowTileSinks.TryGetValue(tileNumber, out var tileSink) ? tileSink as MockNhdMultiviewTileSink : null;
+
+		/// <inheritdoc />
+		public MultiviewLayoutState CurrentLayout => BuildCurrentLayoutState();
+
+		/// <inheritdoc />
+		public event EventHandler<MultiviewLayoutStateEventArgs> LayoutChanged;
+
+		private MultiviewLayoutState BuildCurrentLayoutState()
+		{
+			if (_activeTiles.Count == 0)
+				return null;
+
+			return new MultiviewLayoutState
+			{
+				// No real display resolution query to perform here - always the calculator's
+				// defaults, matching the (0, 0) canvas dimensions passed into CalculateLayout below.
+				CanvasWidth = NhdDynamicMultiviewLayoutCalculator.DefaultCanvasWidth,
+				CanvasHeight = NhdDynamicMultiviewLayoutCalculator.DefaultCanvasHeight,
+				Tiles = _activeTiles.Values
+					.OrderBy(t => t.TileNumber)
+					.Select(t => new MultiviewTileState
+					{
+						TileNumber = t.TileNumber,
+						TileSinkKey = BuildTileSinkKey(t.TileNumber),
+						X = t.X,
+						Y = t.Y,
+						Width = t.Width,
+						Height = t.Height,
+						ZOrder = t.ZOrder,
+						SourceDeviceKey = string.IsNullOrWhiteSpace(t.SourceReference) ? null : t.SourceReference,
+					})
+					.ToList(),
+			};
+		}
+
+		private string BuildTileSinkKey(int tileNumber) => Key + "-tile" + tileNumber;
 
 		/// <inheritdoc />
 		public bool ApplyDynamicLayout(
@@ -134,6 +181,14 @@ namespace PepperDash.Essentials.Plugin.Mock
 
 				tileSink.UpdateCurrentSourceState(eRoutingSignalType.Video, sourceDevice);
 			}
+
+			_activeTiles.Clear();
+			foreach (var tile in tilesByNumber.Values)
+			{
+				_activeTiles[tile.TileNumber] = tile;
+			}
+
+			LayoutChanged?.Invoke(this, new MultiviewLayoutStateEventArgs(CurrentLayout));
 		}
 	}
 

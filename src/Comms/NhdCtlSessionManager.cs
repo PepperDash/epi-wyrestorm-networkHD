@@ -2364,7 +2364,24 @@ namespace PepperDash.Essentials.Plugin.Comms
             if (_pendingMviewEndpoint == null)
                 return;
 
-            _pendingMviewEndpoint.SetMVRuntimeState(_pendingMviewMode, _pendingMviewTiles);
+            // Tile descriptors parsed from hardware feedback (see TryParseTileDescriptor) carry the
+            // raw NHD-CTL API reference (alias/hostname) reported by the device, not the Essentials
+            // device key - unlike tiles produced by Nhd150Rx.ApplyDynamicLayout, whose SourceReference
+            // is already an Essentials key. Resolve each tile's source to its Essentials device key
+            // here so _activeMultiviewTiles (and therefore NhdBaseDevice.CurrentLayout) is always
+            // keyed consistently, matching what Nhd150Rx.SyncTileSinksToLayout already assumes.
+            var resolvedTiles = _pendingMviewTiles
+                .Select(t =>
+                {
+                    if (string.IsNullOrWhiteSpace(t.SourceReference))
+                        return t;
+
+                    var resolvedKey = ResolveEndpoint(t.SourceReference)?.Key;
+                    return t.WithSourceReference(resolvedKey);
+                })
+                .ToList();
+
+            _pendingMviewEndpoint.SetMVRuntimeState(_pendingMviewMode, resolvedTiles);
             CaptureOrInferActiveLayout(_pendingMviewEndpoint);
             TryDispatchPendingCustomWindowAudioForEndpoint(_pendingMviewEndpoint);
             TryDispatchPendingTileRouteForEndpoint(_pendingMviewEndpoint);
