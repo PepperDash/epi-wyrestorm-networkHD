@@ -2618,8 +2618,23 @@ namespace PepperDash.Essentials.Plugin.Comms
         {
             command = null;
 
-            if (rxEndpoint == null || tiles == null || tiles.Count == 0)
+            if (rxEndpoint == null)
                 return false;
+
+            // No visible tiles (e.g. every participant camera muted with no presentation active). A
+            // "matrix set null" does not apply while an RX is in multiview mode, so blank the canvas
+            // with a single full-canvas null tile. Returning false here instead would leave the decoder
+            // showing its previous layout (the last un-muted camera).
+            if (tiles == null || tiles.Count == 0)
+            {
+                command = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "mview set {0} tile null:0_0_{1}_{2}:fit",
+                    rxEndpoint.ApiEndpointReference,
+                    NhdDynamicMultiviewLayoutCalculator.DefaultCanvasWidth,
+                    NhdDynamicMultiviewLayoutCalculator.DefaultCanvasHeight);
+                return true;
+            }
 
             var descriptors = new List<string>();
             foreach (var tile in tiles.OrderBy(t => t.TileNumber))
