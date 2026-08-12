@@ -2624,7 +2624,14 @@ namespace PepperDash.Essentials.Plugin.Comms
             // No visible tiles (e.g. every participant camera muted with no presentation active). A
             // "matrix set null" does not apply while an RX is in multiview mode, so blank the canvas
             // with a single full-canvas null tile. Returning false here instead would leave the decoder
-            // showing its previous layout (the last un-muted camera).
+            // showing its previous layout (the last un-muted camera). Use the decoder's actual output
+            // resolution so the null tile covers the whole canvas on 4K endpoints (not just 1080p).
+            // No visible tiles (e.g. every participant camera muted with no presentation active). A
+            // "matrix set null" does not apply while an RX is in multiview mode, so blank the canvas
+            // with a single full-canvas null tile. Returning false here instead would leave the decoder
+            // showing its previous layout (the last un-muted camera). The NHD multiview coordinate space
+            // is the fixed 1920x1080 reference canvas (see NhdDynamicMultiviewLayoutCalculator), not the
+            // decoder's HDMI-out resolution, so the null tile must use that reference size.
             if (tiles == null || tiles.Count == 0)
             {
                 command = string.Format(

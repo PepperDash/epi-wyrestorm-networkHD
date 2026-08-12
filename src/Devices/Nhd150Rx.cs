@@ -94,13 +94,17 @@ namespace PepperDash.Essentials.Plugin
 				return false;
 			}
 
-			TryGetHdmiOutResolutionDimensions(out var width, out var height);
+			TryGetHdmiOutResolutionDimensions(out _, out _);
 
+			// The NHD multiview coordinate space is the fixed 1920x1080 reference canvas the layouts are
+			// authored against (see NhdDynamicMultiviewLayoutCalculator) - NOT the decoder's HDMI-out
+			// resolution. Scaling tiles up to a 4K output pushes them outside the multiview canvas and the
+			// decoder shows nothing, so always lay out against the reference canvas.
 			var tiles = NhdDynamicMultiviewLayoutCalculator.CalculateLayout(
 				participantSources,
 				presentationSourceKey,
-				width,
-				height,
+				NhdDynamicMultiviewLayoutCalculator.DefaultCanvasWidth,
+				NhdDynamicMultiviewLayoutCalculator.DefaultCanvasHeight,
 				ConfiguredMaxTileCount);
 
 			if (!ctl.SessionManager.TryApplyDynamicLayout(this, this, tiles))
