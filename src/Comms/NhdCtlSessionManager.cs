@@ -2587,6 +2587,33 @@ namespace PepperDash.Essentials.Plugin.Comms
         /// canvas size - the caller is expected to have already computed geometry in actual output
         /// pixel space.
         /// </summary>
+        // Resolves a tile's source device key to the transmitter endpoint that carries it. Accepts a
+        // TX endpoint key directly, or a content source (e.g. camera, codec) tied to a TX via a config tie-line.
+        private static NhdBaseDevice ResolveTransmitterForSourceKey(string sourceKey)
+        {
+            if (string.IsNullOrWhiteSpace(sourceKey))
+                return null;
+
+            var trimmed = sourceKey.Trim();
+
+            if (DeviceManager.GetDeviceForKey(trimmed) is NhdBaseDevice direct && direct.IsTransmitter)
+                return direct;
+
+            foreach (var tieLine in TieLineCollection.Default)
+            {
+                if (tieLine?.SourcePort?.ParentDevice == null || tieLine.DestinationPort?.ParentDevice == null)
+                    continue;
+
+                if (!string.Equals(tieLine.SourcePort.ParentDevice.Key, trimmed, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (tieLine.DestinationPort.ParentDevice is NhdBaseDevice tx && tx.IsTransmitter)
+                    return tx;
+            }
+
+            return null;
+        }
+
         private static bool TryBuildDynamicLayoutCommand(NhdBaseDevice rxEndpoint, IReadOnlyList<NhdMultiviewTileState> tiles, out string command)
         {
             command = null;
@@ -2603,8 +2630,8 @@ namespace PepperDash.Essentials.Plugin.Comms
                 var sourceReference = "NULL";
                 if (!string.IsNullOrWhiteSpace(tile.SourceReference))
                 {
-                    var txEndpoint = DeviceManager.GetDeviceForKey(tile.SourceReference.Trim()) as NhdBaseDevice;
-                    if (txEndpoint == null || !txEndpoint.IsTransmitter)
+                    var txEndpoint = ResolveTransmitterForSourceKey(tile.SourceReference);
+                    if (txEndpoint == null)
                         return false;
 
                     sourceReference = txEndpoint.ApiEndpointReference;
