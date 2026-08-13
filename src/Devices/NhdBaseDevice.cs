@@ -154,10 +154,10 @@ namespace PepperDash.Essentials.Plugin
 		/// Gets the current multiview canvas/tile layout in generic, product-agnostic form, or null if
 		/// this device doesn't support multiview or has no active layout. Satisfies
 		/// <see cref="IRoutingSinkWithLayoutState.CurrentLayout"/> for subclasses that declare that
-		/// interface. Tile positions/sizes are expressed in the same pixel space as
-		/// <see cref="HdmiOutResolutionWidth"/>/<see cref="HdmiOutResolutionHeight"/> (falling back to
+		/// interface. Tile positions/sizes are expressed against the fixed
 		/// <see cref="NhdDynamicMultiviewLayoutCalculator.DefaultCanvasWidth"/>/<see cref="NhdDynamicMultiviewLayoutCalculator.DefaultCanvasHeight"/>
-		/// when the output resolution isn't known yet).
+		/// reference canvas the layouts are authored against (the NHD scales that reference to the
+		/// decoder's actual HDMI-out resolution), so the reported canvas matches the tile coordinates.
 		/// </summary>
 		public MultiviewLayoutState CurrentLayout => BuildCurrentLayoutState();
 
@@ -166,9 +166,12 @@ namespace PepperDash.Essentials.Plugin
 			if (!SupportsMultiview || _activeMultiviewTiles.Count == 0)
 				return null;
 
-			var hasResolution = TryGetHdmiOutResolutionDimensions(out var width, out var height);
-			var canvasWidth = hasResolution ? width : NhdDynamicMultiviewLayoutCalculator.DefaultCanvasWidth;
-			var canvasHeight = hasResolution ? height : NhdDynamicMultiviewLayoutCalculator.DefaultCanvasHeight;
+			// The dynamic-layout tiles are authored against the fixed reference canvas (see
+			// Nhd150Rx.ApplyDynamicLayout), NOT the decoder's HDMI-out resolution - report that same
+			// reference so the debug/UI visualization matches the tile coordinates (a 4K decoder would
+			// otherwise show the 1920x1080-space tiles bunched into the top-left quarter).
+			var canvasWidth = NhdDynamicMultiviewLayoutCalculator.DefaultCanvasWidth;
+			var canvasHeight = NhdDynamicMultiviewLayoutCalculator.DefaultCanvasHeight;
 
 			return new MultiviewLayoutState
 			{
