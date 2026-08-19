@@ -191,8 +191,8 @@ NHD-150-RX supports multiview (max stream count 9 in this plugin).
 
 | Item | Values | Notes |
 | --- | --- | --- |
-| layoutSource | Controller, Config | Controller - built in or customn layout stored on CTL<br> Config - from customMultiviewLayouts |
-| mode | Tile, Overlay | Tile - Windows defined in config will not overlap each other <br> Overlay - Windows defined in config will overlap each other <br><br> Note: setting this incorrectly mave have adverse effects on rendering content |
+| layoutSource | Controller, Config | Controller - built in or custom layout stored on CTL<br> Config - from customMultiviewLayouts |
+| mode | Tile, Overlay | Tile - Windows defined in config will not overlap each other <br> Overlay - Windows defined in config will overlap each other <br><br> Note: setting this incorrectly may have adverse effects on rendering content |
 | scale | Fit, Stretch | Window scaling options |
 | audioMode | Window, Separate, NoChange | Window - select a window index to be the audio source <br> Separate - select a transmitter endpoint to be the audio source <br> NoChange - do not make an audio selection when recalling this Preset |
 | audioWindowReference | Integer index of selected tile in Preset | Must be defined when audioMode is set to Window |
