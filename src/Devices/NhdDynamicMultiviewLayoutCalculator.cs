@@ -262,10 +262,10 @@ namespace PepperDash.Essentials.Plugin
 			}
 		}
 
-		/// <summary>
-		/// Builds a 2-row layout for exactly 3 equal-size participant tiles: tile 1 alone,
-		/// horizontally centered, on the top row; tiles 2 and 3 side by side on the bottom row.
-		/// </summary>
+/// <summary>
+/// Builds an even/near-square grid layout for the given participant tiles.
+/// Column count is computed as ceil(sqrt(N)); if N does not fill the grid evenly, the partial row is centered above the full rows.
+/// </summary>
 		private static IEnumerable<NhdMultiviewTileState> BuildEvenGrid(
 			IReadOnlyList<MultiviewParticipantSource> participants,
 			int canvasWidth,
