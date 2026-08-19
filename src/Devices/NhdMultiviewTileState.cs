@@ -36,10 +36,10 @@ public sealed class NhdMultiviewTileState
 
     public bool IsPlaceholder => string.IsNullOrWhiteSpace(SourceReference);
 
-    public static NhdMultiviewTileState CreatePlaceholder(int tileNumber)
-    {
-        return new NhdMultiviewTileState(tileNumber, null, 0, 0, 0, 0, null);
-    }
+public static NhdMultiviewTileState CreatePlaceholder(int tileNumber)
+{
+    return new NhdMultiviewTileState(tileNumber, string.Empty, 0, 0, 0, 0, string.Empty);
+}
 
     /// <summary>
     /// Returns a copy of this tile with <see cref="SourceReference"/> replaced by
