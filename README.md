@@ -229,7 +229,7 @@ Note: These methods are invoked on the NdhRouter device <br> `type` allowed valu
 
 <br>
 
-## Multiviewer Specific Comands
+## Multiviewer Specific Commands
 
 Common endpoint methods available through device classes include:
 
