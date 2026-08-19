@@ -827,11 +827,14 @@ public class NhdGlobalRouter : EssentialsDevice, IRoutingMidpointWithFeedback
 
             foreach (var rx in matrixTieLineReceivers)
             {
-                foreach (var endpointInputPort in rx.InputPorts)
-                {
-                    var routerPortKey = GetRouterOutputPortKeyForEndpointPort(rx.Key, endpointInputPort.Key);
-                    if (string.IsNullOrWhiteSpace(routerPortKey))
-                        continue;
+foreach (var endpointInputPort in rx.InputPorts)
+{
+    if (endpointInputPort == null)
+        continue;
+
+    var routerPortKey = GetRouterOutputPortKeyForEndpointPort(rx.Key, endpointInputPort.Key);
+    if (string.IsNullOrWhiteSpace(routerPortKey))
+        continue;
 
                     if (OutputPorts.Any(p => string.Equals(p.Key, routerPortKey, StringComparison.OrdinalIgnoreCase)))
                         continue;
