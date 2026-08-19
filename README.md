@@ -75,8 +75,8 @@ Example skeleton:
             "tcpSshProperties": {
                 "address": "192.168.1.50",
                 "port": 23,
-                "autoReconnect": true,,
-                "autoReconnectIntervalMs": 10000,
+                "autoReconnect": true,
+                "autoReconnectIntervalMs": 10000
             }
         },
         "customMultiviewLayouts": [],
