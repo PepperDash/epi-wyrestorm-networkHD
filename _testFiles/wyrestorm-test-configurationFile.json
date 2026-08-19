@@ -46,8 +46,7 @@
           },
           "apiUsername": "admin",
           "apiPassword": "admin",
-        "customMultiviewLayouts": [
-          {
+          "customMultiviewLayouts": [
             "key": "fullscreen",
             "displayName": "Fullscreen",
             "mode": "Tile",
