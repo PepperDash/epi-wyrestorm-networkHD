@@ -35,7 +35,7 @@ The following Essentials type names are currently registered:
 - .NET SDK that can build net8 projects.
 - PepperDash Essentials environment for runtime deployment.
 - Declared minimum Essentials framework version in factories: 3.0.0.
-- Current package reference in this repository: PepperDashEssentials 3.0.0-dev-v3-testing.13.
+- Current package reference in this repository: PepperDashEssentials 3.0.0-dev-v3-routing.50.
 
 ## Build and Package
 
