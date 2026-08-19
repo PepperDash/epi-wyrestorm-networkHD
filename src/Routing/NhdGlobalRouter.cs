@@ -884,10 +884,13 @@ foreach (var endpointInputPort in rx.InputPorts)
 
     private void AddInputPortsForTransmitter(string endpointKey, RoutingPortCollection<RoutingOutputPort> endpointOutputPorts, IKeyed selector)
     {
-        foreach (var endpointOutputPort in endpointOutputPorts)
-        {
-            var routerPortKey = GetRouterInputPortKeyForEndpointPort(endpointKey, endpointOutputPort.Key);
-            if (string.IsNullOrWhiteSpace(routerPortKey))
+foreach (var endpointOutputPort in endpointOutputPorts)
+{
+    if (endpointOutputPort == null)
+        continue;
+
+    var routerPortKey = GetRouterInputPortKeyForEndpointPort(endpointKey, endpointOutputPort.Key);
+    if (string.IsNullOrWhiteSpace(routerPortKey))
                 continue;
 
             if (InputPorts.Any(p => string.Equals(p.Key, routerPortKey, StringComparison.OrdinalIgnoreCase)))
