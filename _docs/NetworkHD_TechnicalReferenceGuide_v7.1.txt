@@ -1,0 +1,1905 @@
+
+
+===== PAGE 1 =====
+
+2  
+ 
+ 
+Technical Reference Guide 
+ 
+ 
+ 
+ 
+Document Revision:   v7.1 
+Document Date:   May 2025 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+===== PAGE 2 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 
+2  
+Contents 
+Overview .............................................................................................................. 4 
+System Components ............................................................................................... 4 
+Controllers (NHD-CTL-PRO) ............................................................................................................... 4 
+Encoders ..................................................................................................................................... 5 
+Decoders ..................................................................................................................................... 5 
+Transceivers ................................................................................................................................. 6 
+NetworkHD Touch™ ................................................................................................. 8 
+Companion Control ................................................................................................. 8 
+NHD-CTL-PRO Web User Interface .............................................................................. 9 
+Application  Scenarios  ............................................................................................. 10 
+One to One Scenario - Single Encoder and Decoder .................................................................................. 10 
+Many to Many Scenario - Multiple Encoders and Decoders ......................................................................... 10 
+Multiview ..................................................................................................................................... 11 
+NHD-600 Multiview ...................................................................................................................... 11 
+NHD-150 Multiview ...................................................................................................................... 11 
+NHD-0401 Multiview ................................................................................................................... 11 
+Video Walls ................................................................................................................................. 12 
+Video Wall Synchronization Performance ............................................................................................. 13 
+NHD-120 Series .......................................................................................................................... 13 
+NHD-500 Series .......................................................................................................................... 13 
+NHD-600 Series .......................................................................................................................... 13 
+Mouse Roaming ............................................................................................................................ 14 
+Fast Seamless Switch Mode .............................................................................................................. 14 
+NHD-120 series fast switch ............................................................................................................ 14 
+NHD-500 series fast switch ............................................................................................................ 14 
+NHD-600 Series fast switch ........................................................................................................... 15 
+System Design Guidelines  and Requirements  ............................................................... 16 
+Preparation for Design and Installation .................................................................................................. 16 
+Powering NetworkHD Components ...................................................................................................... 16 
+System Cooling and Airflow............................................................................................................... 16 
+Software/Firmware ........................................................................................................................ 16 
+Mounting/Installation ...................................................................................................................... 16 
+Source & Display Settings ................................................................................................................ 17 
+AV Input Compatibility...................................................................................................................... 18 
+AV Output Compatibility .................................................................................................................... 18 
+Control Signal Compatibility ............................................................................................................... 19 
+RS-232 Compatibility ....................................................................................................................... 19 
+Infrared Compatibility ..................................................................................................................... 20 
+CEC Compatibility .......................................................................................................................... 20 
+Control Signal Limitation - NHD-110 Series .............................................................................................. 21 
+Discrete Ethernet Compatibility (Virtual Switch) ....................................................................................... 21 
+USB Compatibility .......................................................................................................................... 21 
+System Infrastructure  Guidelines  and Requirements  ....................................................... 24 
+AV Cabling Guidelines..................................................................................................................... 24 
+Testing & Certifying a Network Cabling Infrastructure .................................................................................. 24 
+Choosing  an Ethernet Switch .................................................................................... 24 
+Basic Switch Parameters ................................................................................................................. 24 
+Preconfiguring an Ethernet Switch ........................................................................................................ 24 
+Required Network Switch Features (Multicast) .......................................................................................... 25 
+Switch Ports ............................................................................................................................. 25 
+Core Switch Features ................................................................................................................... 25 
+Packet Routing ........................................................................................................................... 25 
+Ethernet Switch Configuration (Multicast) ................................................................................................ 26 
+Multiple VLAN NetworkHD ............................................................................................................. 29 
+NetworkHD Stream Bandwidth ......................................................................................................... 30 
+Dante Audio Streams ................................................................................................................... 31 
+
+===== PAGE 3 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 
+3  
+Dante AV-A NHD-500 series ........................................................................................................... 31 
+Inter-VLAN Routing ..................................................................................................................... 31 
+Switch Operation Verification ........................................................................................................... 32 
+Security Protocols  ................................................................................................. 33 
+Multicast IP Addresses & Ports .................................................................................. 33 
+NetworkHD 500s ........................................................................................................................ 33 
+NetworkHD 120.......................................................................................................................... 34 
+NHD-CTL & Console Software......................................................................................................... 35 
+Encoder Preview Streams  ........................................................................................ 36 
+Default IP Addresses  ................................................................................................ 37 
+Restoring Default IP Addresses ........................................................................................................... 37 
+Document  Revision History ...................................................................................... 38 
+
+===== PAGE 4 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 
+4  
+Overview 
+NetworkHD™ is a robust and highly scalable AV over IP solution designed for the distribution of audio, video, and control signals over 
+a standard IP Network. The truly modular nature of the NetworkHD system allows an AV distribution of a hugely scalable number of 
+sources and displays to be created over a standardized cabling infrastructure and a managed Network switch topology. To achieve 
+this, NetworkHD consists of three compression technology options – each with its own set of advantages. 
+ 
+NetworkHD 120 utilizes the highly efficient, low-bandwidth H.264/H.265 standard for AV compression supporting 1080p60 and 4k30, 
+2CH PCM audio and HDCP 1.4 over a 1GB network. 
+ 
+NetworkHD 500 series leverages JPEG 2000 compression to provide a visually lossless 4K60Hz 4:4:4 image with very low latency of 
+3ms with support for Dolby Vision/HDR10, HDCP2.2 and multichannel audio over a 1GB network. 
+ 
+NetworkHD 600 series is powered by SDVoE technology. This allows for mathematically identical audio and video to be distributed 
+over a 10GbE network. With support for 4K60Hz 4:4:4, Dolby Vision/HDR10, HDCP2.2, multichannel audio the 600 series is a premium, 
+lossless AVoIP solution. 
+ 
+System Components 
+NetworkHD comprises of a combination of hardware and software common to all NetworkHD Series components. This unified 
+approach removes the need to learn different setup methods across the NetworkHD family. This helps to reduce system design times 
+and offers a known platform from which an Integrator can specify any NetworkHD Series, focusing instead on the concerns of the 
+deployment. 
+ 
+Controller s (NHD-CTL-PRO) 
+ 
+ 
+Image 1 – NHD-CTL-PRO v2 
+ 
+ 
+The NHD-CTL-PRO is the brain of a NetworkHD AVoIP system, it provide the interface point that act as a control bridge for the 
+encoders and decoders, allowing for the selection of content and displaying it at the end point. They feature auto discovery 
+NetworkHD components, a web-based user interface (UI), and the ability for 3rd party control. Only a single CTL is required per 
+system. 
+ 
+ 
+ 
+ 
+
+
+===== PAGE 5 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 
+5  
+Encoders 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Image 2 – NetworkHD Encoders 
+ 
+ 
+Every NetworkHD Encoder supports the direct connection of source devices using HDMI or USB-C, while additional connection types 
+are available on other specific models. These source devices are then encoded over a network using the respective NetworkHD series 
+technology.  
+ 
+Analog audio de-embedding is available on most encoders with the additional ability on the 600 and 500 series to inject analog source 
+audio. 
+ 
+Decoders 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Image 3 – NetworkHD Decoders 
+ 
+NetworkHD RX Decoders receive the A/V stream from the TX Encoders over the Network and convert the signal to HDMI. This allows 
+the content to be used via HDMI on TVs, monitors, or projectors, as well as HDMI/analog audio processors. 
+ 
+Through optional video resolution scaling, frame-rate conversion, and color-space conversion, NetworkHD decoders output content 
+that can be formatted correctly for the connected display. This allows for content to be shown using optimum video requirements 
+without affecting the source transmission. 
+ 
+Analog audio de-embedding is available on most decoders with the additional ability to utilize discrete audio source switching and 
+also advanced audio matrixing on the 600 Series decoders.
+
+===== PAGE 6 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 6  
+Transceivers 
+ 
+ 
+ 
+Image 4 – NetworkHD 600 transceivers 
+ 
+The NetworkHD 600 series contain two transceiver models, NHD-600-TRX & NHD-600-TRXF. Both of these models allow A/V signals to 
+be transmitted and received simultaneously via one physical device. Transceivers have three operating modes that can be configured 
+via CTL’s WebUI.  
+ 
+Transceiver (default) – the TRX can encode via the HDMI input and decode A/V streams from other NHD-600 devices via the HDMI 
+output simultaneously.  
+ 
+Transmitter – the TRX will only encode via the HDMI input and will not decode A/V streams from other NHD-600 encoders. The HDMI 
+output acts as a local loop-out. 
+ 
+Receiver – the TRX acts only as a decoder and will not encode A/V streams via the HDMI input connection. The HDMI input can be 
+used as a local switched input to the HDMI output instead of decoding a network A/V stream. 
+ 
+ 
+Image 5 – Basic connection diagram 
+ 
+
+
+===== PAGE 7 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 7  
+NetworkHD Series Encoder/Decoder Comparison 
+ 
+Features 120 Series 500 Series 600 Series 
+Maximum Input Resolution 4K 4K UHD/DCI 4K UHD/DCI 
+Video Compression Codec H.264/H.265 JPEG 2000 SDVoE 
+Maximum Timing 30Hz 8bit 60Hz 4:4:4 8bit 60Hz 4:4:4 8bit 
+HDCP 2.2 x ✔ ✔ 
+HDR10/HLG x ✔ ✔ 
+Dolby Vision x ✔ ✔ 
+Multichannel Audio N/A Up to Dolby Atmos; DTS:X Up to Dolby Atmos; DTS:X 
+Analog Audio Breakout ✔, unbalanced ✔ balanced ✔ balanced 
+Analog Audio Input x ✔ unbalanced ✔ balanced 
+Audio Delay Adjust ✔ x x 
+Minimum Latency 80ms 3ms 0ms 
+PoE ✔802.3af ✔802.3af ✔802.3at* 
+Auto-discovery ✔ ✔ ✔ 
+Custom Splash Screen Image  ✔ ✔ x 
+Multiview ✔(NHD-150-RX) ✔(NHD-0401-MV) ✔ 
+Video Wall ✔16x16 ✔ 16x16 ✔ 8x8 
+VW Bezel Correction x ✔ ✔ 
+Mosaic Video Wall ✔ ✔ x 
+Image Rotation ✔ ✔ x 
+Batch Firmware Upgrade ✔ ✔ ✔ 
+NetworkHD Touch™ Control ✔ ✔ ✔ 
+Fast Switching ✔ ✔ ✔ 
+IR Routing ✔ ✔ ✔ 
+RS-232 Routing ✔ ✔ ✔ 
+CEC Routing ✔ ✔ ✔ 
+USB for K/M x ✔ ✔ 
+High Speed USB 2.0 x ✔ x 
+Open Control API ✔ ✔ ✔ 
+Network Type 1GbE 1GbE 10GbE 
+Peak Bandwidth per Tx 30Mbps (H.265) 5Mbps 
+(H.265) 850Mbps 8.7Gbps 
+Bandwidth control ✔ ✔ x 
+Rack Mountable ✔ ✔ ✔ 
+Preview Stream ✔ ✔ x 
+Sygma Cloud Support ✔ ✔ ✔ 
+Warranty 5yrs 5yrs 5yrs 
+ 
+*The ability is only available on specific models within a NetworkHD series. Refer to specific product specification sheets for more 
+details on limitations and functionality.  
+Table 1 – NetworkHD Comparison 
+
+===== PAGE 8 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 8  
+NetworkHD Touch™ 
+ 
+ 
+Image 6 – NetworkHD Touch app 
+ 
+The NetworkHD Touch™ app for iPad and Android tablets is available as a free download on the app store. It allows instant 
+deployment of drag-and-drop control for NetworkHD AV switching, video walls, and multiview. By communicating with the 
+NetworkHD configuration file stored on the CTL, NetworkHD Touch can be configured with minimal setup. 
+ 
+NetworkHD Touch does not require a separate control system or Driver, allowing for instant control deployment of simple display 
+control and system verification checks. By adding integration to a 3rd-party control processor, NetworkHD Touch can utilize more 
+advanced equipment control. 
+ 
+Companion Control 
+ 
+ 
+ 
+Image 7 – Companion Control app 
+ 
+Companion Control is a supplementary control app that is used for controlling source devices in a NetworkHD installation such as 
+set-top boxes, Blu-ray players or media streamers. Companion Control works in combination with NetworkHD Touch to create a 
+comprehensive software-based control solution.  
+ 
+For configuration details you can refer to this video: Companion Control Setup Video 
+
+
+===== PAGE 9 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 9  
+NHD-CTL-PRO Web User Interface 
+ 
+ 
+Image 8 – NHD-CTL-PRO Web User Interface 
+ 
+NHD-CTL-PRO controller comes with built-in web UI which enables the configuration of NetworkHD components and the construction 
+of A/V matrix switching, video walls or Multiview displays for use in projects. The process of configuration is same regardless of 
+NetworkHD series. 
+In order to make the configuration easy and user friendly, NHD-CTL-PRO webUI has installation wizard which will help user to 
+configure the system in no time. 
+ 
+For more details on Web User Interface you can refer to this document: NHD-CTL-PRO Web Interface Guide. 
+You can access the demo webUI of the NHD-CTL-PRO: WebUI NHD-CTL-PRO (Username: admin, Password: admin) 
+Feel free to make what ever changes you want it is a demo page only. 
+  
+
+
+===== PAGE 10 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 10  
+Application Scenarios 
+NetworkHD can be used for a variety of applications, ranging from simplistic single source to single display or complex multiple 
+sources to multiple display scenarios. The number of end points in a deployment can be scaled after the fact by adding/removing 
+encoders and decoders as needed. 
+ 
+One to One Scenario - Single Encoder and Decoder 
+In the simplest of installation scenarios, a single encoder and decoder can be linked directly or via the LAN, to send video from a 
+source to a display in another location. If linked directly, the devices must each be powered with the supplied external power supply 
+and the Ethernet cable linking them should not run more than the Ethernet standard dictates, depending on the cable type used and 
+installation environment. 
+ 
+The encoder and decoder may not automatically connect and must first be connected via an NHD Controller and/or the Console 
+software application. This will require connection to a managed Network switch, although once linked the devices can then be 
+connected directly. NetworkHD 500 series comes with P2P mode, which does not require pre-configuration like other series, they can 
+be connected directly to each other out of the box and they will start the stream. 
+ 
+One to One Direct Connection  
+ 
+ 
+ 
+Image 9 – One to One connection diagram 
+ 
+Many to Many Scenario - Multiple Encoders and Decoders 
+The truly modular nature of the NetworkHD system topology allows an AV distribution with a hugely scalable number of sources and 
+displays. NetworkHD can be used to form a virtual “matrix switch” for AV and control signals to and from source and sink equipment. 
+ 
+ 
+ 
+ 
+Image 10 – Many to Many connection diagram  
+ 
+
+
+===== PAGE 11 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 11  
+Multiview 
+Going above single images on a display, NetworkHD can also render images from multiple encoders onto a single display, this is known 
+commonly as Multiview. Not all decoders support this functionality and there are differences in the modes supported. Refer to the 
+table below for products and available modes. 
+ 
+ 
+ NHD-150-RX NHD-0401-MV NHD-600-TRX* 
+Simple Grid Modes ✔ ✔ ✔ 
+Hybrid Grid Modes ✔ ✔ ✔ 
+Video Windowing/Tiling ✔  ✔ 
+PiP , PaP ✔ ✔ ✔ 
+Arbitrary Layouts ✔  ✔ 
+Max number of tiles 9 4 16 
+*Also available on NHD-600-TRXF 
+Table 2 – Multiview layouts 
+ 
+ 
+ 
+NHD-600 Multiview  
+Each NetworkHD 600 encoder has a secondary low bandwidth sub-stream that is designed for use in multiview applications. This 
+secondary stream is required as 600 series decoders cannot decode more than one high bandwidth uncompressed stream at the same 
+time. By using the secondary stream, multiple separate encoders can transmit to the same decoder. 
+ 
+Due to this, there are use-case limitations when incorporating more than one 600 decoder in the same system to process multiview. 
+Depending on the multiview layout being displayed on a 600 decoder, the encoders will scale the secondary stream to fit in the PiP 
+layout. For example, if using a "Simple Grid" layout (like the one shown in the graphic above) on a 4K screen, each encoder's stream 
+would be scaled to 1080p so that they fit appropriately in the layout. 
+ 
+Since the secondary stream is scaled at the encoder, this means if a second 600 decoder wishes to use the same encoder stream but 
+in a different PiP layout, there can be a scaling mismatch. This will translate to a video source either being too large or too small for 
+one of the PiP windows. 
+ 
+Therefore, when sharing encoders across multiple multiview decoders, the resolution of the multiview windows must match. 
+ 
+Additionally, the NHD-600-TRX and TRXF cannot decode multiview and encode via its HDMI input at the same time.  
+ 
+NHD-150 Multiview  
+The NHD-150-RX multiview receiver is compatible with all NHD-100 series encoders. The NHD-150-RX supports two processing modes: 
+tile and overlay. Tile mode supports grid-based layouts, such as simple-grid, hybrid-grid or picture-and- picture (represented in the 
+graphic above). Overlay supports picture-in-picture and arbitrary layouts. Note that in overlay mode, the NHD-150 is limited to a 30Hz 
+output.  
+ 
+NHD-0401 Multiview 
+The NHD-0401-MV is a 4-input HDMI multiview processor. This switcher is a versatile device which allows it to be used as a standalone 
+multiview processor or combined within a NetworkHD 400 or 500 installation via API integration with the NHD-CTL-PRO. This switcher 
+does not support custom multiview layouts and comes preconfigured with five multiview configurations. 
+
+
+===== PAGE 12 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 12  
+Video Walls 
+ 
+In addition to AV and Control matrix switching, NetworkHD can also be used in video wall scenarios to display a single image across 
+multiple displays. Each panel in the wall requires an RX decoder in order to display the image. Not all decoders support this 
+functionality and there are differences in the number of panels that can be used. Refer to the tables below for products and available 
+modes. 
+ 
+With the exception of the 600 series, NetworkHD decoders allow for partial screen rotation in standard video walls. For example, in a 
+2x2 video wall the top two screens can be rotated 180° to compensate for ununiform bezel thickness. 
+ 
+Video Wall Features  
+ NHD-120-RX NHD-400-RX* NHD-500-RX* NHD-600-TRX* 
+Maximum Number of Displays 16x16 16x16 16x16 8X8 
+Image Stretch ✔ ✔ ✔ ✔ 
+Display Bezel Compensation N/A ✔ ✔ ✔ 
+Image Rotation N/A ✔ ✔ N/A 
+Genlock Synchronization N/A ✔ ✔ ✔ 
+ 
+ 
+*Also available on NHD-400-E-RX, NHD-500-E-RX & NHD-600-TRXF 
+Table 3 – Video wall features 
+ 
+ 
+ 
+ 
+Image 11 – Video wall diagram 
+ 
+During the video wall playback process, factors such as jitter and delay in network transmission, performance differences across RX 
+models, and variations in the performance of display devices may occasionally cause asynchronization among screens. 
+There are three series of AV over IP products: NHD-120 Series, NHD-500 Series, and NHD-600 Series. In each of these series there are 
+differences in the synchronization performance during Video Wall video playback. 
+To achieve the best Video Wall playback synchronization effect, it is recommended to use the same model of RXs and TVs to build a 
+Video Wall, ensuring that the settings of all RXs and TVs are uniform. In addition, all RXs should be on the same switch to ensure 
+consistent signal routing from the TX to RXs. 
+ 
+ 
+
+
+===== PAGE 13 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 13  
+Video Wall Synchronization Performance 
+NHD-120 Series 
+The synchronization difference across multiple screens is usually within 1 frame, with occasional differences of up to 2 frames. 
+NHD-500 Series 
+To balance switching and inter-screen synchronization, it is recommended to set the same frame rate for all video sources at the TXs, 
+set all RXs to scaler mode, and avoid configuring rotation on the screens. 
+If the firmware version is V1.8 or later, it is recommended to use Ultra Low Latency mode (ULL). In ULL mode, when the NHD-500 
+works at 4K@60Hz resolution, the latency is less than 4 milliseconds. Therefore, the synchronization difference across multiple 
+screens is also under 4 milliseconds. 
+NHD-600 Series  
+The synchronization difference among multiple screens is less than 1 frame. 
+ 
+ Sync Difference Across Multiple Screens Notes  
+NHD-120  1 frame  Occasional 2-frame difference  
+NHD-500  1 frame  Less than 4ms in ULL Mode  
+NHD-600  < 1 frame  /  
+ 
+ 
+ 
+NHD-CTL-PRO Performance 
+NHD-CTL-PRO Controller can manage the following series of the NHD products (both encoders and decoders):  
+- NHD-100 series (NHD-100-TX, NHD-100-RX, NHD-110-TX, NHD-110-RX, NHD-140-TX, NHD-120-TX, NHD-120-RX, NHD-124-TX, 
+NHD-150-RX, NHD-200-TX, NHD-210-RX, NHD-250-RX) 
+- NHD-400 series (NHD-400-TX, NHD-400-RX, NHD-400-E-TX, NHD-400-E-RX, NHD-400-DNT-TX, NHD-400-TX-IW) 
+- NHD-500 series (NHD-500-TX, NHD-500-RX, NHD-500-E-TX, NHD-500-E-RX, NHD-500-IW-TX) 
+- NHD-600 series (NHD-600-TRX, NHD-610-TX, NHD-610-RX, NHD-600-TRXF) 
+- NHD-0401-MV 
+NHD-CTL-PRO establishes signaling channels with all NHD transmitters and receivers to complete device configuration, control, 
+upgrade and other functions. Therefore, the more NHD transmitters and receivers connected to NHD-CTL-PRO, the greater the 
+overhead on NHD-CTL-PRO’s CPU and memory performance. 
+On the other hand, NHD-CTL-PRO is also responsible for the forwarding function of preview steams. As shown in Figure 1, users can 
+preview the stream of NHD transmitter on NHD Touch and NHD WEB. NHD-CTL-PRO provides two network ports. One is AVport, 
+which is usually in the same VLAN as the NHD transmitters and receivers and is specifically used to transmit audio and video streams. 
+The other is CTL port, which is usually used to control the system, including connecting NHDTouch and NHD WEB. Providing two 
+network ports can effectively isolate media flow and control flow, providing a safer guarantee for NHD networking. Therefore, when 
+NHD Touch and NHD WEB need to preview the stream of the NHD transmitter, NHD-CTL-PRO is responsible for the forwarding of the 
+preview stream. When the number of forwarded streams is greater, the performance overhead of NHD-CTL-PRO will be greater.  
+ 
+  
+
+
+===== PAGE 14 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 14  
+Mouse Roaming  
+NHD-500 devices support Mouse Roaming, letting you control multiple computers using just one mouse and 
+keyboard. Once configured in the NHD -CTL-Pro WebUI, your mouse can move freely across screens —just by 
+reaching the edge of a display. This gives you seamless control over up to 16 con nected host computers. It’s a 
+great way to boost efficiency in setups like control rooms or monitoring stations. 
+Note: Mouse roaming is supported only on  a PC server with a single display. If a single PC server has multiple 
+graphic cards with multiple displays this feature will not be applicable.  
+To know more about this please check out the Mouse Roaming Guide document. 
+Fast Seamless Switch Mode 
+In a AV over IP system it is common to switch the video sources. During this process, factors such as signal 
+synchronization, HDCP capability interaction, resolution adaptation, and other processes can result in longer 
+switching times, and in some cases, black screens may appear during the transition. 
+If the switching time is within 1 second and no black screen occurs during the transition, the switching 
+method is classified as Fast Seamless Switch. NetworkHD products support Fast Seamless Switch with the 
+appropriate configuration.  
+ 
+NHD-120 series fast switch 
+The NHD-110 and NHD-120 series support Fast Seamless Switch without the need for special 
+configurations. 
+ 
+NHD-500 series fast switch 
+The NHD-500 Series starting from version v1.8.5 comes with Fast Seamless Switch mode by default. If 
+the settings are modified and Fast Seamless Switch needs to be enabled, it can be set from Advanced 
+Video options in NHD-CTL-PRO controller WebUI for both Transmitter and Receiver. 
+ 
+ 
+Image 12 – NHD-500 Series Fast Switch Mode 
+After a device reboot, HDCP will be forcibly set to version 1.x, and the output mode will automatically 
+switch to Scaler (AUTO), adjusting the resolution based on the optimal resolution of the connected 
+display devices. 
+
+
+===== PAGE 15 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 15  
+NHD-600 Series fast switch 
+The decoder supports two video output modes: 
+• Genlock: Follows the encoder source settings. The source parameters, including resolution, color 
+space, frame rate, and HDCP protocol, are preserved without alteration to achieve optimal video 
+quality and minimize latency. 
+• Fast Switch: Forces the output video to a specified resolution, minimizing handshake procedures and 
+significantly reducing switching time. This mode is suitable for scenarios requiring fast seamless 
+switching. It may alter the source's resolution, color space, frame rate, and other parameters, 
+potentially leading to a slight loss in video quality. 
+ 
+ 
+NHD-500 Ultra-Low Latency (ULL) Limitations 
+Ultra-low latency can be achieved in both Passthrough Mode and Scaler Mode, but certain conditions may introduce limitations: 
+• The video wall is not configured in an NxN layout (e.g., a 2x3 video wall). 
+• Rotation is enabled. 
+• Frame Rate Hybrid Mode is active, where the source refresh rate differs from the display refresh rate. 
+Aside from these specific scenarios involving frame rate conversion, non-NxN video walls, and rotation, ultra-low latency is supported 
+without any additional configuration. 
+
+===== PAGE 16 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 16  
+System Design Guidelines and Requirements 
+While NetworkHD is easy to configure and install, there are some guidelines and requirements that make the system operate to their 
+optimum level. By following this section, a NetworkHD deployment can be designed, configured, and operated at its optimum 
+performance level. 
+ 
+Preparation  for Design and Installation  
+Build the system and test all components before attending the installation site. Doing so will find any issues before moving to the less 
+flexible and time sensitive environment of the installation itself. Knowing that a unit was configured properly before installation 
+makes it far easier to pinpoint the cause of the problem, saving time and money for your business. 
+ 
+WyreStorm offers several resources to improve the effectiveness of the preparation stages, we recommend that these items are 
+downloaded and utilized before starting any system design, configuration, and/or installation. 
+ 
+• Latest version of NetworkHD Firmware. 
+• Switch Configuration Guides for a wide array of popular network switches. 
+• Switch Mapping Worksheets for recording IP addresses and alias names. 
+• 3rd Party Drivers for a wide array of popular control systems. 
+ 
+Powering NetworkHD Components  
+A majority of NetworkHD components support PoE standards which minimizes the use of external power supplies and allows for 
+centralizing the power distribution for the components. This not only reduces the cable count at various stages, but also enhances 
+the effectiveness of labor time on site. When utilizing PoE be sure to observe the power requirements of the quantity of NetworkHD 
+components connected to a network switch and ensure this is within the PoE power budget and in accordance with the standards 
+provided by a network Switch. 
+ 
+System Cooling and Airflow 
+Ineffective thermal considerations can have a detrimental effect on the lifetime of electronic products. Ensure proper passive or 
+active cooling strategies are used to ensure heat is moved away from the components allowing them to remain within their 
+operating temperatures. Poor positioning of components or installation of cables may attribute to creating hotspots that trap heat, 
+whenever possible avoid placing cables in areas that will prevent air from reaching the components limiting proper cooling. 
+ 
+NetworkHD rack-mount kits (NHD-000-RACK4|NHD-124-RACK-1U) have been designed to allow for optimal mounting and cooling of 
+the NetworkHD equipment within an AV rack. We recommend that these are used in order to ensure a clean installation that also 
+allows for proper thermal performance. Should the installation not allow for the use of a rack-mount kit, the encoders and decoders 
+should never be positioned flat against a shelf or stacked on top of each other. At least 1.5in/38.1mm of clearance should be left on 
+the top and sides of each NetworkHD component to ensure adequate airflow is maintained. 
+ 
+Software/Firmware 
+Where possible WyreStorm ships all components with the most up to date firmware, however before starting any installation the 
+firmware in the components should be verified to be the latest. This will allow for the components to operate properly and ensure 
+that the latest features are available. We also recommend that the firmware version on all third-party hardware, particularly 
+network switches and TVs, is verified to be the latest as well. Refer to the relevant manufacturers content for information on how to 
+obtain and install any new firmware required. 
+ 
+Mounting/Installation 
+The correct mounting of devices, particularly in the unforgiving environment of an AV or IT rack is vital to any successful installation. 
+When mounting devices using the included wall brackets, observe the orientation of the device conforms to the correct method to 
+allow for secure mounting and proper cooling. 
+ 
+For AV and IT racks, WyreStorm offers rack mount kits to allow for quick and easy installation that provides a clean installation with 
+adequate airflow. All rack mount kits provide a steel housing that can be used in a central and secure location for the components. 
+ 
+NHD-000-RACK4 is designed for all NetworkHD encoders including the NHD-CTL-PRO v2. 
+ 
+NHD-124-RACK-1U is designed for the NHD-124-TX encoder. 
+ 
+NHD-RACK-1U is designed for NetworkHD 500 series but it can hold other series as well. 
+ 
+
+===== PAGE 17 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 17  
+Source & Display Settings 
+WyreStorm NetworkHD components use the highest quality encoding available to provide efficient distribution across a large number 
+of video and audio endpoints. However, the video quality starts with and depends on the source content being encoded. The 
+following guidelines apply to any and all encoding within a NetworkHD system. 
+ 
+• Some legacy NetworkHD 100/200 series encoders are not compatible with interlaced sources. For those devices, ensure 
+that all source content is set to Progressive scan (e.g. 720p/1080p) and not interlaced (e.g. 1080i). Interlaced content is not 
+supported on the NHD-100-TX or NHD-200-TX. 
+ 
+• When expanding an existing NHD-100/110 system, the NHD-120 series needs to be used. To do this the old NHD-000-CTL 
+needs to be replaced with NHD-CTL-PRO. It's important to note that this configuration supports a maximum resolution of 
+1080p. 
+ 
+• Low power modes should be disabled on the displays and sources to ensure the system is always supplied with content. If a 
+display shows no image, ensure the source device or display device has not entered a power- saving mode or is in a standby 
+mode. 
+ 
+• Enabling CEC for all displays ensures that NetworkHD can power them on and off making them available to display an image 
+when the system is accessed. This setting may be called something other than CEC and is not always enabled by default. 
+Refer to the technical information for the display for details. By default, NetworkHD utilizes a specific subset of CEC power 
+commands, One Touch Play and Standby that may not be supported by all third-party equipment vendors, however 
+alternative CEC commands may be defined using the NetworkHD setup software. 
+ 
+• Overscan or “smart” aspect ratio settings should be disabled in any display that is part of a video wall, if it is enabled the 
+image may not be a correct representation. This setting is almost always enabled by default and often hidden in advanced 
+settings menus. Refer to the technical information for the display for details on how to disable it. Video wall displays should 
+have video scan or aspect ratio processing disabled as well. 
+ 
+• Ensure that displays or other HDMI sinks used are fully compatible with the signal type used. The NetworkHD decoders 
+feature a video scaler which can influence a signal presented to a display, depending on the scaler settings used. Refer to 
+Appendix A.2 for details of the NetworkHD output signals. 
+ 
+
+===== PAGE 18 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 18  
+AV Input Compatibility  
+ NetworkHD 120 NetworkHD 400 NetworkHD 500 NetworkHD 600  
+Compatible HDMI Version 1.4 2.0a 2.0b 2.0b  
+Compatible HDCP Version 1.4,2.2 1.4, 2.2 1.4, 2.2 1.4, 2.2  
+Maximum HDMI 
+Bandwidth 
+4.46 Gb/s 8.91 Gb/s 17.82 Gb/s 17.82 Gb/s  
+Maximum HDMI TMDS 
+Clock 
+165 MHz 300 MHz 595 MHz 595 MHz  
+ 
+Maximum HDMI Timing 
+1080p@60 8b 4:4:4 
+4K@30 8b 4:2:0 
+ 
+2160p@30 8b 4:4:4 
+2160p@60 8b 4:2:0 
+2160p@30 12b 4:2:2 
+2160p@60 8b 4:4:4 
+2160p@60 12b 4:2:2 
+2160p@60 8b 4:4:4 
+2160p@60 12b 4:2:2  
+Interlaced Video Support Y Y Y Y  
+Color Space RGB, YCbCr RGB, YCbCr RGB, YCbCr RGB, YCbCr  
+YCbCr sampling 4:2:0 4:4:4, 4:2:2, 4:2:0 4:4:4, 4:2:2, 4:2:0 4:4:4, 4:2:2, 4:2:0  
+HDR Support N HDR10 / HLG HDR10/HLG/ 
+Dolby Vision 
+HDR10/HLG/ 
+Dolby Vision 
+ 
+2ch PCM Audio Y Y Y Y  
+Multichannel PCM Audio N Y Y Y  
+Dolby / DTS Audio Support N Y Y Y  
+2ch Analog Audio Ingest N/A Y* Y Y  
+*Functionality only available on certain models 
+Table 4 – AV Input Compatibility 
+ 
+ 
+ 
+AV Output Compatibility  
+ NetworkHD 120 NetworkHD 400 NetworkHD 500 NetworkHD 600 
+Compatible HDMI Version 1.4 2.0a 2.0b 2.0b 
+Compatible HDCP Version 1.4, 2.2 1.4, 2.2 1.4, 2.2 1.4, 2.2 
+Maximum HDMI Bandwidth 4.46 Gb/s 8.91 Gb/s 17.82 Gb/s 17.82 Gb/s 
+Maximum HDMI TMDS Clock 165 MHz 300 MHz 595 MHz 595 MHz 
+ 
+Maximum HDMI Timing 
+1080p@60 8b 4:4:4 
+4K@30 8b 4:2:0 
+2160p@30 8b 4:4:4 
+2160p@25 8b 4:4:4 
+2160p@60 8b 4:4:4 
+2160p@60 12b 4:2:2 
+2160p@60 8b 4:4:4 
+2160p@60 12b 4:2:2 
+Color Space RGB, YCbCr RGB, YCbCr RGB, YCbCr RGB, YCbCr 
+YCbCr sampling 4:2:0 4:4:4, 4:2:2, 4:2:0 4:4:4, 4:2:2, 4:2:0 4:4:4, 4:2:2, 4:2:0 
+HDR Support N HDR10 / HLG HDR10/HLG/ 
+Dolby Vision 
+HDR10/HLG/ 
+Dolby Vision 
+2ch PCM Audio Y Y Y Y 
+Multichannel PCM Audio N Y Y Y 
+Dolby / DTS Audio Support N Y Y Y 
+ 
+Table 5 – AV Output Compatibility 
+ 
+ 
+
+===== PAGE 19 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 19  
+Control Signal Compatibility  
+ NetworkHD 120 NetworkHD 400 NetworkHD 500 NetworkHD 600 
+RS-232 Pass-through     
+TX > RX Routed Routed Routed Routed, Broadcast 
+RX > TX Routed Routed Routed Routed, Broadcast 
+RS-232 Generation (API)     
+To TX Y Y Y Y 
+To RX Y Y Y Y 
+RS-232 Notification (API)     
+From TX Y Y Y Y 
+From RX Y Y Y Y 
+RS-232 Serial Bit Rate     
+Stepped rates between 50 – 230400 b/s 50 – 230400 b/s 50 – 230400 b/s 2400 – 115200 b/s 
+Data Bits     
+Byte size supported 5, 6, 7, 8 5, 6, 7, 8 5, 6, 7, 8 6, 7, 8 
+Stop Bits     
+No. of stop bits 1, 2 1, 2 1, 2 1, 2 
+Parity Bit     
+Type supported None, Odd, Even None, Odd, Even None, Odd, Even None, Odd, Even 
+Infrared Pass-through     
+TX > RX Routed Routed Routed Routed, Broadcast 
+RX > TX Routed Routed Routed Routed, Broadcast 
+Infrared Generation (API)     
+To TX Y Y Y Y 
+To RX Y Y Y Y 
+Infrared Notification (API)     
+From TX N N N Y 
+From RX N N N Y 
+CEC Generation (API)     
+To RX Y Y Y Y 
+Discrete 1GbE Switch     
+At TX N N Y Y 
+At RX N N Y Y 
+USB Pass-through     
+Device (RX) > Client (TX) Y Y Y Y 
+USB Class Device Quantity  
+per TX 
+N HID: 7 
+Other: 7 
+HID: 7 
+Other: 7 
+HID: 3 
+Other: 3 
+USB Max. Data rate N/A 64Mbs 300Mbps 480Mbps** 
+**480Mbps speeds only available on NHD-600-TRXF 
+Table 6 – Control Signal Compatibility  
+ 
+ 
+RS-232 Compatibility  
+RS-232 on all NetworkHD devices with RS-232 ports is full duplex and compatible with the TIA-232-C standard. All NetworkHD 
+devices utilize 3-wire RS-232 and thus do not support hardware flow control. Due to the nature of control signal translation in the 
+NetworkHD system, the RS-232 data transmission cannot be guaranteed to be isochronous. Some NetworkHD devices may also 
+include a +12V power rail on the same RS-232 connector. Be sure to observe the device port labelling to avoid connection issues. 
+ 
+Where RS-232 data pass-through is supported, ensure that the correct default UART settings on an encoder or decoder are set using 
+the NetworkHD Console software application before connecting external equipment. These will remain statically assigned until 
+modified in the Console application. This may include baud rate, number of data bits, number of stop bits and type of parity bit (if 
+used). When utilizing the NetworkHD API to generate RS-232 data, the UART attributes in the API command and subsequently 
+generated RS-232 data can be different from the statically assigned, default values. 
+
+===== PAGE 20 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 20  
+Infrared Compatibility  
+Using WyreStorm infrared emitters and receivers is the best way to ensure that most IR coding formats are transmitted and received 
+by the NetworkHD system. Other 3rd party emitters and receivers can be used; however, these devices must operate in the same 
+manner as the WyreStorm devices. 
+ 
+On the 120/400/500 series the IR data modulation (carrier) frequency is passed through NetworkHD from the receiver to the emitter, 
+however on the 600 series the carrier frequency is fixed at 38kHz when used in pass-through mode. When using the API, the carrier 
+frequency can be defined for greater compatibility. 
+ 
+Due to differences in IR across 3rd party control systems, their IR ports should never be connected directly to a NetworkHD system as 
+an incompatibility may exist. WyreStorm offers a cable known as the CAB-IR-LINK that allows for connection to 3rd party control 
+systems that compensates for voltage differences, as well adjusts for differences in the pins used within the port. Use of this cable 
+helps ensure compatibility between the control system and the NetworkHD system. Refer to the CAB-IR-LINK product page for more 
+information. 
+ 
+CEC Compatibility  
+CEC wiring is mandatory in HDMI ports and cables, although implementation of CEC in a product is optional. It was defined in HDMI 
+Specification 1.0 and updated in HDMI 1.2, HDMI 1.2a and HDMI 1.3a. 
+ 
+HDMI-CEC is often branded differently depending on the equipment vendor. Some common examples are listed below: 
+• Anynet+ (Samsung) 
+• Aquos Link (Sharp) 
+• BRAVIA Link, BRAVIA Sync, Control for HDMI (Sony) 
+• CE-Link, Regza Link (Toshiba) 
+• E-link (AOC) 
+• EasyLink (Philips) 
+• Fun-Link (Funai, Sylvania, Emerson, Magnavox, Philips) 
+• HDMI-CEC (Hitachi) 
+• INlink (Insignia) 
+• Kuro Link (Pioneer) 
+• NetCommand for HDMI, Realink for HDMI (Mitsubishi) 
+• RIHD (Remote Interactive over HDMI) (Onkyo) 
+• RuncoLink (Runco International) 
+• SimpLink (LG) 
+• T-Link (ITT) 
+• VIERA Link, HDAVI Control, EZ-Sync (Panasonic) 
+ 
+It is important to note that some third-party equipment may not support the commands generated by NetworkHD devices. It is 
+imperative that compatibility is verified before assuming this feature will be compatible with any chosen third-party equipment. 
+ 
+CEC control command generation via the HDMI interface is supported on some NetworkHD devices. This can be useful for controlling 
+a connected HDMI sink device that supports specific CEC commands. The default CEC commands generated by NetworkHD devices are 
+as follows: 
+ 
+• One Touch Play: Allows NetworkHD to switch the HDMI sink to use it as the active source when playback starts. This 
+typically turns on a display and selects the correct HDMI input on a display. 
+ 
+CEC Address: NHD 500/400 Series: 0xF0 | NHD 110/120 Series: 0x40 
+CEC Message ID : 0x0D 
+ 
+• System Standby: Allows NetworkHD to switch the HDMI sink into a standby mode. 
+ 
+CEC Address: NHD 500/400 Series: 0xFF | NHD 110/120 Series: 0x40 
+CEC Message ID: 0x36 
+ 
+
+===== PAGE 21 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 21  
+Control Signal Limitation - NHD-110 Series 
+NetworkHD 110 series components support three methods of control signal pass-through/routing: USB, Infrared & RS-232. Due to 
+hardware limitations, only 2 of these 3 protocols can operate simultaneously, meaning one of the control signals will be disabled. By 
+default, RS-232 is disabled with IR and USB operational. This can be changed from within the NetworkHD console software. 
+ 
+Discrete Ethernet Compatibility  (Virtual Switch) 
+The NetworkHD 600 series includes a “Virtual Switch” capability. This allows third-party Ethernet-capable devices to connect to an 
+encoder or decoder and be linked to other devices connected to other NetworkHD 600 series encoders and decoders. 
+ 
+The IEEE 802.1ab compliant “LAN” ports on NetworkHD 600 series devices are linked together to form a “virtual” 1GbE unmanaged 
+switch. It must be noted that the 1GbE links are encoded as part of the SDVoE connectivity used for the main 10GbE port on a 600 
+Series device. Thus, the Network topology of the “LAN” ports follows that of the host NetworkHD device within a Network 
+deployment. The “LAN” ports themselves do not offer discrete Layer 2 or Layer 3 configuration options and should be treated as basic 
+nested, unmanaged Layer 2 switch ports. 
+ 
+It is important that network loops are not created when using the 1GbE ports. Note that access to the 1GbE ports is typically achieved 
+at the 10GbE switch. 
+ 
+The 10GbE ports and the 1GbE ports are logically connected together. 
+The NHD-500-TX/RX v2 also includes a “Virtual Switch” capability. The “Dante” ethernet port on these devices can be used for Dante 
+AV-A or to connect third-party Ethernet-capable device that needs to be connected to the network. For this “LAN” port, same rules 
+apply as described above for NHD-600 series. 
+ 
+ 
+USB Compatibility  
+ 
+NetworkHD 110 Series 
+The 110 series are equipped with USB 1.1 (HID) ports and only support keyboard/mouse or similar HID devices. An unlimited number 
+of keyboard/mouse connections can be made to a single host (TX) device.  
+ 
+NetworkHD 120 series does not support USB. 
+ 
+NetworkHD 400 Series  
+The 400 series offers a higher data-rate USB 2.0 (up to a max. theoretical data-rate of 64Mbs) on v2 or newer 
+hardware. See below for USB modes and supported device types on the 400 series. 
+ 
+Supported USB Device Types: 
+1. Bulk Data transfer: 
+a. Devices such as Printers, Scanners, Memory Sticks, HDD/SSD and other devices that do not rely on time sensitive data 
+transfer. 
+2. Control Data Devices: 
+a. Devices such as Keyboard, Mouse, Touchscreen, and other user-initiated data transfers. 
+3. Interrupt Data Devices: 
+a. Devices that generate asynchronous but not time sensitive data that generally require user attention. 
+ 
+Unsupported USB Device Types: 
+• Isochronous Data Devices: 
+o Devices that require time-sensitive data transfer, such as some Webcams and audio devices. Due to the data 
+transfer of AV over IP technology favoring the Video and Audio streams, the USB data is sent in bursts and cannot 
+guarantee isochronous behavior. Thus, support for some time-sensitive device types cannot be guaranteed. 
+WyreStorm recommends testing such products for compatibility in advance of system deployment. 
+
+===== PAGE 22 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 22  
+400 Series USB Operation: 
+ 
+When an encoder is connected to a host machine via a USB cable, the host machine will enumerate a Standard USB Hub. If KMoIP 
+mode is enabled on the encoder the host machine will also enumerate a HID class composite device. 
+ 
+USB functionality operates in the following two modes: 
+ 
+USBoIP Mode: 
+ 
+USBoIP allows up to 5 USB devices to be routed simultaneously to any encoder. It offers transparent redirection technology, allowing 
+the encoders and decoders to appear invisible to the host machine. When a device is attached to a decoder and a decoder with 
+attached devices is assigned to an encoder, (via a matrix assignment command) the connected devices will enumerate on the host 
+machine as if they are connected via a standard USB Hub to a host USB port. This mode is selected automatically if the device 
+connected at a decoder is not of the USB HID class type (Base Class 03h) or if KMoIP mode is disabled on the decoder. 
+ 
+A maximum of 5 USBoIP mode devices is supported on any one encoder. When an encoder is assigned a 6th USBoIP device on a 
+decoder, the connection will be ignored and the host machine will not enumerate it. If a USBoIP device leaves an encoder (a USB 
+device is unplugged at an RX or an RX becomes unassigned to a TX), space at a TX will allow more USB devices to be assigned. This will 
+not happen automatically; the USB assignment will have to be established again via an API or control system command. 
+ 
+KMoIP Mode: 
+ 
+KMoIP mode (if KMoIP mode is enabled on the decoder) is automatically selected if the device connected to a decoder is of the USB 
+HID class type (Base Class 03h). KMoIP mode offers emulation of a composite keyboard and mouse device to the host machine, 
+enumerating at the point at which the encoder is connected, via a USB cable to the host machine. 
+ 
+KMoIP mode offers a few advantages over USBoIP mode: 
+• An unlimited number of keyboard or mouse devices can be used at the same time, connected to the same host machine 
+• When switching a host machine (using a matrix assignment command) to a KMoIP mode decoder, the host need not 
+enumerate the device each time, leading to much quicker switch times and instant usage. 
+ 
+KMoIP mode only enumerates on the host machine as an 84/101/104 standard keyboard and up to 8-button mouse with one wheel. 
+At this time, touch panels, gamepads and joystick devices may not be supported, depending on the USB profile they require. To use 
+unsupported HID class (Base Class 03h) devices the decoder can be instructed to disable KMoIP mode and revert to USBoIP mode. 
+ 
+To enhance the user experience, devices utilizing KMoIP mode will block other KMoIP devices assigned to an encoder when they are in 
+use. This results in only one keyboard, for example, sending data to the host at any one time. The block is in place for 100ms after a 
+keystroke. After 100ms has elapsed any assigned KMoIP device can then send data to the host again. 
+ 
+KMoIP mode is enabled on both the encoder and decoder by default or after a factory reset procedure. 
+ 
+When changing the KMoIP mode on an encoder or decoder the setting will only be realized after a device reboot. 
+ 
+Please note that if KMoIP mode is disabled on the encoder but enabled on an assigned decoder, and a HID class device is used with a 
+decoder, the device communication to the encoder will be blocked. Thus, it is recommended that KMoIP mode on the encoder is 
+always set to “enabled” unless the host machine explicitly 
+requires enumeration removal of the HID class composite device. 
+ 
+
+===== PAGE 23 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 23  
+NetworkHD 500 Series 
+ 
+The NHD-500-RX v2 features two different types of USB device ports. Two ports are USB 1.1 (HID) for keyboard/mouse or similar HID 
+devices. These two HID ports operate in KMoIP. 
+ 
+KMoIP mode offers: 
+• An unlimited number of keyboard or mouse devices can be used at the same time, connected to the same host machine 
+• When switching a host machine (using a matrix assignment command) to a KMoIP mode decoder, the host need not 
+enumerate the device each time, leading to much quicker switch times and instant usage. 
+ 
+Additionally there are 2 more USB ports available which supports higher bandwidth USB 2.0 (up to a theoretical 300Mbps upstream). 
+These two ports use USBoIP mode and supports a 7-to-1 links (client to host).  
+ 
+Most USB 2.0 devices are supported by the 500 series however due to the bandwidth limit of 300Mbps there is potential for 
+incompatibility. Any USB device should be tested to function before real-world application use.  
+ 
+If multiple RXs are receiving the same video stream, the last matrix assigned RX will be the active client connection to the host TX. The 
+USB link can be discretely changed using specific USB API commands via the NHD-CTL. 
+ 
+To learn more about Supported USB peripherals, please refer to “Supported USB Peripherals of NHD-500” document.  
+ 
+NetworkHD 600 Series 
+ 
+NHD-600-TRX & NHD-610-TX v2: 
+These models are equipped with three USB 1.1 (HID) ports and only support keyboard/mouse or similar HID devices. USB assignment 
+is a 1-to-1 link (client to host); it does not support a one-to-many configuration. 
+ 
+Because the NHD-600-TRX is a transceiver, the USB data flow can be manipulated. The transceivers feature both USB Type A device 
+ports and a USB Type B host port. By default, the host connection will auto-negotiate based on the active Type B connection to a PC. 
+The active host connection can be forced via NetworkHD software tools. This is referred to LEX and REX modes.  
+ 
+LEX: Local USB Extender – the NHD-600-TRX acting as the host connection to a PC 
+REX: Remote USB Extender – the NHD-600-TRX device connecting to peripheral HID components  
+ 
+If multiple TRX’s receive the same video stream, the last matrix assigned TRX will be the active client connection to the host TRX. 
+ 
+NHD-600-TRXF 
+ 
+NHD-600-TRXF incorporate a high-speed Icron USB chipset capable of the full 480Mbps USB 2.0 specification and therefore 
+compatible with virtually any USB 2.0 peripheral device.  
+The NHD-600-TRXF abides by the same USB limitations as the NHD-600-TRX including LEX and REX configurations. 
+If multiple TRX’s are receiving the same video stream, the last matrix assigned TRX will be the active client connection to the host TRX. 
+ 
+Note: TRXF series use an Icron USB chipset, the USB data is a proprietary transmission and is not compatible with USB on the NHD-
+600-TRX nor NHD-610-TX v2.  
+ 
+NetworkHD USB-TRX 
+ 
+The NHD-USB-TRX is a versatile USB transceiver within the NetworkHD product lineup, designed to extend USB signals over an IP 
+network with specific native compatibility for the NHD-500 series. This native compatibility allows the NHD-USB-TRX to send USB 
+signals directly to NHD-500 devices, creating a seamless connection for applications requiring interactive peripherals like keyboards, 
+mice, webcams, or storage devices. 
+However, the NHD-USB-TRX also offers flexibility beyond the 500 series. It can be utilized as a USB extender over the network with 
+other NetworkHD series devices, making it a valuable solution for a broad range of AV over IP setups. This functionality allows clients 
+to incorporate the NHD-USB-TRX in mixed-network environments, facilitating USB connectivity across different NetworkHD series 
+while optimizing interactive applications like video conferencing, remote workstation access, and digital signage. 
+By supporting both native and extended compatibility, the NHD-USB-TRX is ideal for NetworkHD deployments where seamless USB 
+sharing and versatility across devices are critical. 
+ 
+
+===== PAGE 24 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 24  
+System Infrastructure Guidelines and Requirements 
+Ensuring the correct infrastructure is key to a successful NetworkHD deployment. Read through and follow the information provided 
+in this section to allow for successful deployment and operation of a NetworkHD system. 
+ 
+AV Cabling Guidelines  
+Due to the ever-changing technologies for transmission and increases in content bandwidth, preparing for changes at the time of 
+installation is advisable. 
+ 
+As signal bandwidth increases, useable AV or control cable lengths can decrease. To avoid connectivity issues due to cable length, 
+ensure connected AV or control devices are located as close to NetworkHD components as possible. 
+Refer to the relevant standards for the signal type used (e.g. HDMI, RS-232 etc.) 
+ 
+Testing & Certifying a Network Cabling Infrastructure  
+While WyreStorm products are manufactured and tested to the highest standards, the installation environment can have an adverse 
+effect on system performance. WyreStorm recommends that network each cable is not only tested for correct termination but is also 
+certified to conform to the relevant network bandwidth, crosstalk and interference limit standards for each link type and distance 
+required before installation of NetworkHD components. 
+ 
+Refer to the Required Network Switch Features section for information regarding the network connection to a NetworkHD device. 
+ 
+Choosing an Ethernet Switch 
+The flexibility of a WyreStorm NetworkHD solution brings AV distribution into the network domain. Many network switch vendors 
+exist but the interoperability of any network depends on the support of various network standards. WyreStorm NetworkHD products 
+take advantage of well-established, common network standards found built into the majority of managed switches. 
+ 
+The guidance that follows is intended to give various details on the network standards required of a switch selected for use with 
+NetworkHD. Refer to the NetworkHD Switch Configuration Guides located on WyreStorm.com for detailed, vendor-specific switch 
+information when choosing and configuring a network switch. 
+ 
+Basic Switch Parameters 
+The main features of a selected network switch depend on the NetworkHD devices used: 
+ 
+NetworkHD 120 Series  1GbE switch Layer 2+* / Layer 3 
+NetworkHD 400 Series 1GbE switch Layer 2+* / Layer 3 
+NetworkHD 500 Series 1GbE switch Layer 2+* / Layer 3 
+NetworkHD 600 Series 10GbE switch Layer 2+* / Layer 3 
+Table 7 – Basic Switch Parameters 
+ 
+It should be noted that most 10GbE switches support backward compatibility with 1GbE devices. 
+*Layer 2 switches must have support for IGMP Snooping and Multicast Filtering. 
+ 
+Preconfiguring  an Ethernet  Switch 
+Network switches that are directly connected to NetworkHD components should always be configured prior to connecting any 
+components. Due to the encoder’s instant-on feature, a multicast stream could disrupt the expected behavior of a switch if it is not 
+configured to accept multicast traffic in advance. 
+ 
+WyreStorm offers a library of Switch Configuration Guides specific to many tested network switches to help reduce set-up times. 
+NetworkHD 120/400/500 Series components have subtle differences to the 600 Series. Although all NetworkHD multicast operation is 
+the same, the NetworkHD 600 Series requires a 10Gb infrastructure rather than the typical 1Gb. This means that the WyreStorm 
+recommended switches for 120, 400 &500 may not be common to the 600 Series and a separate list of recommendations exist. 
+ 
+As the NetworkHD solution is inherently scalable, it is recommended that a switch is purchased that will have more Ethernet ports 
+than NetworkHD devices so that more can be quickly added in the future where required. 
+
+===== PAGE 25 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 25  
+Required Network Switch Features (Multicast)  
+Switch Ports 
+The WyreStorm NetworkHD family devices utilize twisted pair cable Ethernet standards. The Ethernet switch port connecting directly 
+to a NetworkHD device must therefore support the following: 
+ 
+NHD-CTL-PRO 1Gb/s Full-duplex 1000Base-T IEEE 802.3ab 
+NHD 120, 400, 500 Series 1Gb/s Full-duplex 1000Base-T IEEE 802.3ab 
+NHD 600 Series 10Gb/s Full-duplex 10GBase-T IEEE 802.3an 
+Table 8 – Required Network Switch Features  
+ 
+Core Switch Features  
+• Multicast forwarding or filtering 
+• IGMP Snooping 
+• IGMP v2 Querier 
+• IGMP Fast-leave 
+• Jumbo Frames (only 400 series require Jumbo frames, specifically with an MTU size ≥ 9000 bytes.*) 
+*500 series do not require jumbo frames  with firmware v1.8 or greater.  
+ 
+Packet Routing 
+To enable the transmission of a source to multiple destination, NetworkHD devices make use of Multicast. The default behavior of an 
+unmanaged Ethernet switch could be to broadcast those packets to every switch port. This means that every packet will be 
+transmitted to all connected devices. 
+ 
+This is why any network switch used with NetworkHD has to support IGMP Snooping. NetworkHD devices use the IGMP protocol to 
+request data from a specific multicast group (encoder) and the switch uses IGMP snooping to identify IGMP messages and efficiently 
+forward multicast packets only to decoders that want to receive them. 
+ 
+Many switches have the IGMP Snooping feature disabled by default and manual configuration is required. Often, a simple check mark 
+near “Enable IGMP Snooping” is the only thing needed to enable IGMP Snooping. However, the implementation of IGMP Snooping is 
+vendor specific, and more configuration is often needed. 
+ 
+An Ethernet switch can be informed that a device wants to leave a multicast group by sending it an IGMP LEAVE GROUP packet. Once 
+received, the time it takes for the switch to apply the new configuration may vary from one switch to another. Most switches 
+implement and include a FASTLEAVE configuration option. When enabled, it takes much less time for a particular switch port to leave 
+a multicast group and to assign the port to a different multicast group. The end result is often a noticeably shorter video switching 
+time. However, care must be taken when using FASTLEAVE across multiple switches. 
+ 
+A selection of Ethernet switches exist that are pre-configured for NetworkHD packet forwarding by default. In this situation, for a pure 
+NetworkHD system, the switch is simply plug-and-play out of the box. This only applies to single switch deployments however and 
+further NetworkHD device setup will still be required. 
+ 
+Refer to the NetworkHD Certified Switches document located on WyreStorm.com for a list of plug-and-play switches currently 
+supported. 
+
+===== PAGE 26 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 26  
+Ethernet Switch Configuration  (Multicast)  
+The following list includes all network switch configuration options that WyreStorm engineers have come across so far. NetworkHD 
+data is typically contained in one VLAN. Look for these or similar options when configuring your switch. 
+ 
+Feature Setting 
+IGMP Snooping Must be enabled. 
+IGMP Snooping on VLAN Must be enabled on VLAN NetworkHD resides in. 
+Filter/Drop Unregistered Multicast 
+Must be enabled if found. 
+ 
+If not applied, the behavior of the switch will be to broadcast multicast 
+packets if there is no known destination for that packet 
+Unregistered Multicast Flooding Must be disabled if found 
+IGMP Querier 
+Must be enabled 
+For VLAN – must be enabled if found 
+Must be set to IGMP V2 
+ 
+Multiple switch topologies may require this to be disabled on some 
+switches. See Using IGMP Querier Function for more information 
+Fast Leave 
+Should be enabled for single switch deployments if found. 
+ 
+Multiple switch topologies may require this to be disabled on some 
+switches. See Using the Fast Leave Function for more information 
+Green Ethernet or Energy Saving Must be disabled if found. 
+Jumbo Frames Must be enabled if found when using NHD-400s. 
+(MTU size ≥ 9000 bytes) 
+Table 9 – Ethernet Switch Configuration  
+ 
+Refer to the NetworkHD Switch Configuration Guides located on WyreStorm.com for detailed, vendor-specific Switch information. 
+ 
+Using the IGMP Querier Function  
+In order for IGMP, and thus IGMP snooping, to function, a multicast router or IGMP Querier function on a switch must exist on the 
+network and generate IGMP queries. The tables created for snooping (holding the member ports for each a multicast group) are 
+associated with the Querier. Without a Querier, the tables are not created, and snooping will not work. Furthermore, IGMP general 
+queries must be unconditionally forwarded by all switches involved in IGMP snooping. Some IGMP snooping implementations found 
+on many switches include full Querier capability. 
+ 
+One IGMP Querier should exist on a NetworkHD VLAN. In multiple switch deployments for example, when cascaded switch topologies 
+exist, only one switch should enable the Querier function with it disabled (manually or automatically) on all other switches. 
+Using the Fast Leave Function 
+An Ethernet switch can be informed that a NetworkHD device wants to leave a multicast group by the device sending the switch an 
+IGMP LEAVE packet. When a switch receives an IGMP V2 leave message from a NetworkHD device, it sends out multiple multicast 
+group-specific queries. If no other NetworkHD device replies within the waiting period, the switch stops forwarding traffic. When 
+FASTLEAVE is configured, and when the switch receives an IGMP leave message on a port, it immediately stops forwarding to that 
+port. The switch then does not send multicast group- specific queries. When FASTLEAVE is configured on a switch, you must not have 
+multiple NetworkHD devices connected on any port in the switch. This includes links between multiple switches. Thus, care must be 
+taken in multiple switch topologies when using this function. 
+
+===== PAGE 27 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 27  
+Using PoE 
+Most NetworkHD devices utilize PoE for local power as an alternative to the supplied external power supply adapter. This can offer 
+centralized power distribution from the switch as well as reduction in component count, cable count and installation labor time. 
+The power options available to NetworkHD devices related to switch PSE PoE ports is as follows: 
+ 
+NHD-CTL-PRO PoE compliant (AV Port) 15.4W - IEEE 802.1af or Local DC power supply 
+NHD 120/400/500 Series PoE compliant 15.4W - IEEE 802.1af or Local DC power supply 
+NHD-124-TX Local DC power supply 
+NHD-600-TRXF Local DC power supply 
+NHD-600-TRX & NHD-610-TXv2 PoE+ compliant 25.5W - IEEE 802.1at or Local DC power supply 
+NHD-USB-TRX PoE 802.3at standard up to 30W support 
+Table 10 – The power options 
+ 
+ 
+ 
+ 
+ 
+ 
+When selecting a PoE capable switch, the total PoE budget must be considered. For example, some switches can supply PoE to only a 
+subset of ports when running at 15.4W per port, other switches can support 15.4W on every port simultaneously. Switch PoE budget 
+can easily be calculated by adding the number of NetworkHD devices that require PoE. 
+For example: 24x NHD-120-RX = 370W total switch PoE budget 
+ 
+Using multiple Network switches 
+When using more than a single network switch with multicast, further configuration options must be considered. Multiple switch 
+topologies usually employ 2 main methods: 
+ 
+Switch Stacking 
+A stackable switch is a network switch that is fully functional operating standalone, but which can also be set up to operate together 
+with one or more other network switches, with this group of switches showing the characteristics of a single switch but having the 
+port capacity of the sum of the combined switches. 
+ 
+• If a switch supports operating in this mode, be sure that the configuration guidance shown above applies to the entire 
+switch stack to ensure unified stack multicast support. 
+• Often, switch vendors will utilize special port modes for use with stacking and some switches make use of dedicated 
+stacking ports and cables. These will have a finite bandwidth. 
+ 
+ 
+ 
+Image 12 – Switch Stacking 
+
+
+===== PAGE 28 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 28  
+Switch cascading 
+Linking switches together, often with links that support a greater bandwidth, is an alternative method by which to increase the 
+amount of NetworkHD units connected to a system. 
+ 
+Either by using dedicated link ports or aggregated link ports, network switches can extend the NetworkHD VLAN across multiple 
+locations using varying topologies. Bandwidth requirements should be considered, with the maximum peak NetworkHD stream 
+bandwidth required being exceeded by the link segment between switches. 
+Further Considerations  for Multiple Switch Deployments  
+Ethernet switches that are used for cascaded topologies must also support the following functions: 
+ 
+Dynamic multicast router port Must be enabled on all switches that do not contain the IGMP 
+Querier function 
+Forwarding unknown multicast to multicast router port X only Must be enabled on all switches that do not contain the IGMP 
+Querier function 
+ 
+ 
+ 
+ 
+ 
+Image 13 – Switch cascading 
+
+
+===== PAGE 29 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 29  
+Switch Configuration  (Multicast)  
+Feature Single Switch Networking 
+Cascading Networking 
+Core Switch Extended Switch 
+Green or energy-saving feature Disable Disable Disable 
+Multicast forwarding or filtering Enable Enable Enable 
+IGMP Snooping Enable Enable Enable 
+IP address of IGMP Querier Must be assigned a valid value Does not matter 
+IGMP Querier Enable Enable Disable 
+IGMP snooping fast leave Enable Disable Enable 
+Dynamic multicast router port Disable Disable Enable 
+Forward All unknown multicast Disable Disable Router port only* 
+* Port which connects the extended switch back to the switch running an IGMP Querier 
+ 
+Multiple VLAN NetworkHD  
+NetworkHD components are typically designed to reside within a single VLAN. By default, many switches will have a single VLAN 
+(perhaps VLAN ID 1). Unless specifically noted or required, it is not necessary to create an additional VLAN. 
+ 
+Multicast routing using PIM or an equivalent multicast routing process is not currently supported by NetworkHD. 
+ 
+The NHD-CTL-PRO is equipped with dual Ethernet ports so that it can simultaneously connect to two separate networks or VLANs 
+without the need for additional routing functionality configured within the switch. Both NHD-CTL-PRO ports are separately compliant 
+with the NetworkHD control API or control system driver communications channel. This enables a Control network to be completely 
+isolated from an AVoIP network, while connected to the NHD-CTL-PRO, without further considerations for Network administration. 
+ 
+Where physical network isolation utilizing the dual NHD-CTL-PRO interfaces is not used and a control system that needs to 
+communicate with the NetworkHD Controller exists on a different VLAN or broadcast domain, the following information can be used 
+to aid routing of the API or control system driver communication channel: 
+ 
+NHD-CTL-PRO: Telnet server <NHD-CTL-PRO address>, CTL ingress on TCP Ports 23 and 23000, CTL egress   TCP port undefined 
+ 
+It must be noted that the factory default “AV” port interface IP address of the CTL uses DHCP and thus might not be routable unless 
+changed to a routable IP address. 
+ 
+The data generated by the CTL (where the destination IP is outside the scope of the relevant network interface) is forwarded to the 
+Gateway IP address assigned to the relevant CTL interface. It is thus important that a Router at this Gateway IP address is configured 
+to forward the data to the correct route for the intended destination IP. 
+ 
+ 
+
+===== PAGE 30 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 30  
+NetworkHD  Stream Bandwidth  
+The NetworkHD encoders transmit AV content at a known bitrate. It is the encoder bandwidth that makes up almost all of the 
+Network traffic in a VLAN. Each NetworkHD encoder sends multicast stream data at the following peak bitrates: 
+ 
+NetworkHD NHD-120-TX: 30Mb/s (H.264) 16 Mb/s (H.265) 1GbE switch required 
+NetworkHD NHD-124-TX: 120Mb/s (30Mbps per input) 1GbE switch required 
+NetworkHD 500 series encoder 850Mb/s 1GbE switch required 
+NetworkHD 600 Series encoder: 8.7Gb/s peak (varies by source resolution) 10GbE switch required 
+ 
+When using a single switch with multiple NetworkHD encoders, the main consideration is the backplane speed of the switch which 
+must exceed the bitrate sum of the total number of NetworkHD encoders. 
+ 
+For example: 10x NHD-500-TX = 10x 850Mb/s = 8.5Gb/s total bitrate 
+ 
+When using multiple switches, the considerations extend further, introducing the need to calculate the link bandwidth between 
+switches. This should be considered both for switch stacks and for other topologies. 
+ 
+For example, when using a core/extended topology, the link speed between switches must exceed the bitrate sum of the total 
+number of NetworkHD encoders required by decoders on a link segment. 
+ 
+ 
+NetworkHD 600 series bandwidth varies depending on the video timing of the source content. Below is bandwidth consumption based 
+on resolution. 
+ 
+• 1080p@60Hz 8bit - 3.4Gbps 
+• 4K UHD@30Hz 4:4:4 8bit - 6.4Gbps 
+• 4K UHD@60Hz 4:4:4 8bit – 8.7Gbps (with light compression) 
+ 
+The remaining bandwidth out of the available 10Gbps is used for transmission of control signals, LAN and the multiview sub-stream. 
+ 
+
+
+===== PAGE 31 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 31  
+Dante Audio Streams 
+Dante is an uncompressed, multi-channel digital media networking technology, based on industry standards, developed by Audinate. 
+ 
+To maintain maximum compatibility, Dante encoders built within WyreStorm products comply with all Audinate software tools for 
+Dante. Thus, Audinate software should be obtained and used for configuration and switching of Dante audio. 
+ 
+Although not mandatory, it is recommended that Dante network data is separated from NetworkHD AV over IP data to simplify the 
+Dante networking. 
+ 
+WyreStorm has designed Dante audio encoders into NetworkHD products so that they can be isolated from general AV over IP 
+network traffic, removing any concern from Dante network administrators regarding how the Dante network data may or may not be 
+“affected” by general NetworkHD AV over IP network traffic, despite sharing a physical network port. Due to WyreStorm’s unique 
+design, the Dante encoder elements within a NetworkHD product have a separate MAC address and IP address compared with the 
+NetworkHD encoder elements. Considering that a managed Layer 2 or Layer 3 switch is mandatory for use with NetworkHD products, 
+all compatible switches used for NetworkHD will include a simple function to filter Dante data ingress at the switch port and isolate 
+this data away from NetworkHD AV over IP data. The most ubiquitous technique used for this process is the MAC-based VLAN 
+function. 
+ 
+Please refer to the Dante MAC-Based VLAN Application note and the various NetworkHD Switch Configuration Guides located on 
+WyreStorm.com for detailed, vendor-specific Switch information.  
+ 
+Dante AV-A NHD-500 series 
+Dante AV-A is a compressed audio and video transport protocol developed by Audinate, designed to operate within the same 
+ecosystem as Dante audio. It allows both video and audio to be routed via Dante Controller, bringing unified AV signal management to 
+IP networks. 
+WyreStorm has implemented Dante AV-A support on all NHD-500 Series products. Activation of Dante AV-A functionality requires the 
+use of Audinate's Dante Activator software and a valid license per device. Once activated, the device becomes visible within Dante 
+Controller and can be routed as a Dante AV-A video and audio source or destination. 
+Each licensed NHD-500 Series device supports one Dante AV-A video stream along with 2x2 channels of Dante audio. This makes it 
+suitable for applications requiring both compressed video distribution and basic stereo audio routing within the Dante ecosystem. 
+Dante AV-A operates independently of the standard NetworkHD AV over IP stream. Although both protocols share the same physical 
+Ethernet port, they utilize separate MAC and IP addresses. This allows for complete logical separation of traffic, consistent with 
+WyreStorm’s design philosophy of network segmentation and reliability. 
+Important Notes: 
+• When it comes to video routing, users must choose either the WyreStorm NHD-CTL-PRO controller or Dante Controller 
+software for system management. Both cannot be used simultaneously to control Dante AV-A video routing. 
+• Dante AV-A enabled encoders and decoders cannot interoperate with NetworkHD devices that do not have Dante AV-A 
+enabled. Each encoder and decoder includes the option to enable or disable Dante AV-A. If Dante AV-A is enabled on one 
+endpoint (e.g., an encoder) but disabled on another (e.g., a decoder), video routing between those devices will not function. 
+Therefore, if Dante AV-A is selected for use in a system, it must be enabled uniformly across all participating endpoints to 
+ensure proper video and audio operation. 
+• Dante AV-A video streams require Jumbo Frames to be enabled on the network. Once Dante AV-A is disabled, Jumbo Frames 
+are no longer required. To simplify network configuration or avoid Jumbo Frame requirements, an Audio Only mode is 
+available as an alternative. 
+ 
+Please refer to NHD-500 Dante AV-A Application Guide for more information. Documentation 
+ 
+Inter-VLAN Routing  
+In situations where the CTL API/Control system driver communication channel or encoder preview stream data needs to be accessed 
+from a different VLAN the data will need to be routed. When using Inter-VLAN routing to route data between VLANs there will need to 
+be a Gateway IP defined within the CTL (API channel) IP settings or each encoder (preview stream) IP settings. This Gateway IP is 
+required to be the interface IP address of the Router’s interface that is connected to the NetworkHD VLAN. This necessitates that the 
+Gateway IP address is within the scope of the IP subnet assigned to the NetworkHD CTL or encoder. 
+ 
+Likewise, equipment connected to a VLAN different to that of the NetworkHD VLAN will need to send data to a Router that can 
+forward the data to the correct route so that the destination IP (the IP address of the target NetworkHD device) can be reached. 
+ 
+The router(s) used therefore may require additional routing table entries assigned to them depending on your network setup 
+
+===== PAGE 32 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 32  
+Switch Operation  Verification  
+During WyreStorm’s testing, we’ve found that different vendors and models of switches vary in performance when handling multicast 
+data packets. Therefore, although a switch may meet the previous requirements, they may still not be suitable for use with 
+NetworkHD. A final conclusion can be made through practical function verification and pressure testing. WyreStorm cannot offer 
+detailed support on switches that are not documented by our library of switch configuration guides, therefore choosing to use other 
+switch models is done so at the installer’s own risk. 
+ 
+Refer to the NetworkHD Switch Configuration Guides located on WyreStorm.com for detailed, vendor-specific Switch information. 
+
+===== PAGE 33 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 33  
+Security Protocols 
+ 
+Certain communication protocols can be enabled or disabled on individual NetworkHD components. By default, all series of products 
+use Telnet and HTTP for various aspects of operation. SSH and TLS (SSL) protocols can be enabled in addition or in lieu of Telnet and 
+HTTP to provide encrypted communication methods.  
+ 
+Enabling SSH/TLS on the NHD-CTL provides the following: 
+• Encrypted internal API communication between TX and RX devices 
+• Encrypted external API communication between CTL and 3rd-party control system 
+• Encrypted access of the web interface 
+• Prevents unauthorized access to root privileges by requiring authenticated credentials 
+ 
+Enabling SSH/TLS on encoders/decoders provides the following: 
+• Encrypted internal API communication to CTL 
+• Encrypted access to web servers (preview streams) 
+• Prevents unauthorized access to root privileges by requiring authenticated credentials 
+ 
+In addition to the above-mentioned security protocols, NetworkHD encoders and decoders utilize AES 128-bit encryption of multicast 
+audio and video streams over the network. 
+ 
+Multicast IP Addresses & Ports 
+The following information outlines multicast addresses, protocols, and ports utilization across multiple NetworkHD series products. 
+NetworkHD 500s  
+B.CD.EF shown in the multicast addresses below should be replaced by the last 20 bits of a device’s MAC address, which is then 
+converted from hexadecimal to decimal. For example, if calculating a device’s video stream MC address where the device has a MAC 
+address of E4:CE:02:A2:34:4F, the calculated MC address would be 234.34.52.79. 
+Application Address Host -> Client 
+Host <- Client 
+Heartbeat/ 
+Multicast/ 
+UDP 
+video 
+234.32+B.CD.EF 
+X → 59002 
+59002 ← X 
+audio 
+234.48+B.CD.EF 
+X → 59003 
+59003 ← X 
+ir 
+234.64+B.CD.EF 
+X → 59004 
+59004 ← X 
+serial 
+234.80+B.CD.EF 
+X → 59005 
+59005 ← X 
+audio return 
+234.96+B.CD.EF 
+X → 59006 
+59006 ← X 
+usb 
+234.112+B.CD.EF 
+X → 59007 
+59007 ← X 
+node_query → 
+node_response 
+225.1.0.1 X → 59101 
+node_response → 
+node_query 
+UDP X → 59100 
+VideoIP Host 
+encode 
+234.32+B.CD.EF X → 59200 
+59201 ← X 
+X → 59204 
+59204 ← X 
+
+===== PAGE 34 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 34  
+ 
+ 
+NetworkHD 120 
+For details on how to calculate NHD-120 series multicast addresses please reach out to WyreStorm Technical Support.  
+ 
+ 
+Application Protocol IP:PORT Relevant Device 
+Main video 
+stream port 
+ 
+UDP F(0x1)[1]:12345 
+ 
+NHD-120, 124& 150 
+Main audio 
+stream port 
+ 
+UDP F(0x1) [1]:12346 NHD-120, 124& 150 
+Sub stream port 
+ 
+UDP F(0x2) [1]:12345 NHD-120, 124& 150 
+Pure audio 
+stream port 
+ 
+UDP F(0x3) [1]:12346 NHD-120, 124& 150 
+RS232 TX 
+ 
+UDP F(0x4) [1]:12400 NHD-120 
+RS232 RX 
+ 
+UDP F(0x4) [1]:12401 NHD-120 
+IR TX 
+ 
+UDP F(0x5) [1]:12410 NHD-120 
+IR RX 
+ 
+UDP F(0x5) [1]:12411 NHD-120 
+USB TX 
+ 
+UDP F(0x6) [1]:12420 NHD-120 
+AudioIP Host 
+encode 
+234.48+B.CD.EF X → 59300 
+IRoIP Host encode 234.64+B.CD.EF X → 59400 
+59400 ← X 
+SoIP Type 3 234.80+B.CD.EF X → 59500 
+59500 ← X 
+Audio Return 
+Decoder 
+234.96+B.CD.EF 59301 ← X 
+USBoIP TCP 59700 ← X 
+KMoIP 234.112+B.CD.EF X → 59702 
+59703 ← X 
+node_list → 
+node_reply 
+225.1.0.0 X → 3333 
+node_reply → 
+node_list 
+UDP X → 3334 
+CTL → TX/RX 226.1.0.0 
+228.1.0.0 
+X → 1234 
+TX/RX → CTL 226.2.0.0 X → 10000 
+X → 20002 
+HTTP Service TCP 80 
+HTTPS Service TCP 443 
+
+===== PAGE 35 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 35  
+USB RX 
+ 
+UDP F(0x6) [1]:12421 NHD-120 
+Searching 
+devices 
+listening port 
+ 
+UDP 225.1.0.0[3]:3333 NHD-120, 124& 150 
+I frame unified 
+switch to RX 
+information 
+listening port 
+ 
+UDP 226.2.0.0[3]:4321 NHD-120, 124& 150 
+I frame unified 
+switch order 
+listening port 
+ 
+UDP 226.2.0.1[3]:4322 NHD-120, 124& 150 
+CTL Notify 
+information 
+listening port 
+ 
+UDP 226.2.0.0:10000 NHD-120, 124& 150 
+Mjpeg http 
+browser port 
+ 
+TCP 0.0.0.0:80 NHD-120, 124& 150 
+Mjpeg https 
+browser port 
+ 
+TCP 0.0.0.0:443 NHD-120, 124& 150 
+ 
+NHD-CTL & Console Software 
+Application Protocol Address Host -> Client 
+Search protocol used for 
+devices searching or searched 
+by PC software.  
+UDP/MC  225.1.0.0  CTL->TX/RX  
+or  
+PC->CTL  
+Batch control event channel for 
+CTL and Console software.  
+UDP/MC  226.1.0.0  CTL->TX/RX  
+Matrix switch command to TX 
+address via Console 
+UPD/MC  226.2.0.1  CTL->TX/RX  
+Serial report and video 
+lost/found Notification via 
+Console. 
+UPD/MC  226.2.0.0  CTL->TX/RX  
+Search protocol used by CTL UDP/MC  225.1.0.0 X->3333  
+Search protocol reply  UDP   3334<-X  
+Matrix switch command to RX UDP/MC  226.1.0.0 X->1234  
+Matrix switch command to TX.  
+(Only valid for H.264 products)  
+UDP/MC  226.2.0.1 X->4322  
+Serial report and video 
+lost/found notification.  
+UDP/MC  226.2.0.0 10000<-X  
+Telnet API channel TCP  23 <- X 
+Telnet API channel for NHD 
+Touch 
+TCP  23000 <- X 
+SSH API channel for NHD Touch TCP  10022 <- X 
+Web service  TCP  80 <- X 
+ 
+
+===== PAGE 36 =====
+
+Copyright © 2025 WyreStorm Technologies | wyrestorm.com 
+NetworkHD™ Technical Reference Guide | 221031 
+Outside UK: +1 (844)-280-WYRE (9973)| UK: +441793676683 
+support@wyrestorm.com 36  
+Encoder Preview Streams 
+ 
+NetworkHD encoders in the 120 and 500 series generate a low -bandwidth, low-resolution unicast Motion JPEG 
+stream intended for real -time source preview. These streams are typically used in control system interfaces or 
+monitoring tools to display a live thumbnail of the source content. 
+ 
+The NetworkHD Touch App for iPad uses these streams to provide live previews of each source, and the same 
+stream can also be embedded in 3rd-party user interfaces or opened in a standard web browser. 
+ 
+Previously, these preview streams were accessed directly from each encoder via their IP address (e.g., 
+http://<encoder IP address>/stream). This required the requesting device (e.g., iPad) to be on the same subnet or 
+have direct routing access to each encoder. 
+With the introduction of the NHD -CTL-PRO controller, all preview streams are now centralized and proxied 
+through the controller. This means: 
+• The encoder does not need to be on the same subnet as the device requesting the preview stream. 
+• The only requirement is that the encoder is reachable from the NHD -CTL-PRO, even over the control 
+port. 
+• The iPad or control system only needs access to the NHD-CTL-PRO, not to each encoder individually. 
+This architecture simplifies network design, especially in environments with segmented VLANs or strict routing 
+rules. 
+Example (via controller): http://<controller IP address>/preview/<device MAC> 
+ 
+Note: The NHD-600-TRX, NHD-600-TRXF, and NHD-610-TX do not generate preview streams. 
+ 
+Additional Recommendations: 
+• If using preview streams without a controller, it is still recommended to assign static IP addresses  to 
+encoders to ensure consistent access, especially in DHCP or link-local environments (169.254.x.x). 
+• Ensure the controller has proper routing to all encoders to successfully proxy the preview streams. 
+
+===== PAGE 37 =====
+
+Default IP Addresses  
+A NetworkHD device restored to factory defaults will have the following IPv4 Network details: 
+ 
+ Host IP Netmask Default Gateway 
+120, 500, 600 Series DHCP, auto-IP DHCP, auto-IP DHCP, NA (undefined) 
+NetworkHD NHD-CTL (AV) 169.254.1.1 255.255.0.0 169.254.1.254 
+NetworkHD NHD-CTL (Control) 192.168.11.243 255.255.255.0 192.168.11.1 
+If a DHCP server is not on the network units will default to an auto-IP range of 169.254/16. It must be noted that when devices are 
+in auto-IP mode, Routers will not forward packets with link-local (auto-IP) addresses.  
+NetworkHD 600 series devices require two IP addresses per device. One IP address is for the SDVoE transmission and the other 
+is for the MCU (microcontroller). Keep this in mind when allocating an IP address range from either a DHCP server or assigning 
+static IP addresses to ensure enough addresses are available. 
+In the NHD-610-TX and NHD-610-RX the high-speed Icron USB chipset also requires a unique IP address in addition to the SDVoE 
+and MCU IP addresses.  
+ 
+Restoring Default IP Addresses  
+NHD-120 series, NHD-500 series:  
+With the unit powered on, press and hold the reset button for 15 seconds 
+ 
+NHD-600-TRX, NHD-600-TRXF, NHD-610-TX/RX: 
+Disconnect power. Press and hold the reset button. Continue holding the button and apply power. Continue to hold the button for up 
+to 15 seconds. 
+ 
+NHD-CTL-PRO:  
+With the unit powered on, press and hold the reset button for 15 seconds 
+ 
+NHD-0401-MV 
+With the unit powered on, press and hold the reset button for 15 seconds 
+
+===== PAGE 38 =====
+
+Document Revision History 
+ 
+V7.1 – May 2025 • General update 
+V6.8 – December 2022 • Added Multicast IP Address & Ports Section 
+• Updated NHD-600 factory default procedure 
+V6.7 – November 2022 
+ 
+• Added details pertaining to NHD-0401-MV 
+• Added details pertaining to IP addresses on 600 series 
+V6.6 – September 2022 
+ 
+• Added Companion Control section 
+• Added details regarding multiview on 600 series transceivers 
+V6.5 – May 2022 
+ 
+• Added details pertaining to NetworkHD 500s 
+• Updated formatting 
+• Removed details pertaining to legacy/discontinued models 
+V6.4 – March 2022 
+ 
+• Removed bezel correction and mosaic video wall features on NHD-110s to 
+reflect version 2 capabilities 
+• Clarified USB functionality on NHD-110s. Updated to reflect version 2 
+capabilities. 
+V6.3 – December 2021 
+ 
+• Added information pertaining to NHD-600-TRX, TRXF, NHD-610-TX/RX 
+V6.1.1 – April 2021 
+ 
+• Added clarification on use-case and limitations for multiview 
+V6.0.2 – January 2021 
+ 
+• Added details pertaining to NetworkHD 110 series devices 
+V6.0.1 – April 2020 
+ 
+• Corrected default IP settings for various devices 
+V6.0.0 – March 2020 
+ 
+• Added references for new products 
+• Added Dante Audio Streams information for 400 series 
+V5.0.0 – March 2019 
+ 
+• Added NHD-250-RX to firmware/software table 
+ 
+
+===== PAGE 39 =====
+
+Publication Disclaimer 
+The material contained in this document consists of information that is the sole property of WyreStorm. This 
+document is intended to provide information to allow interfacing to the relevant WyreStorm equipment by third party 
+products. 
+WYRESTORM  IS NOT RESPONSIBLE FOR  MALFUNCTIONS AND/OR THE  IN-OPERABILITY WHICH MAY  
+BE CAUSED BY  THE APPLICATION OF THIS INFORMATION, WHETHER EXPECTED OR NOT. 
+WyreStorm reserves the right to change software, control codes and specifications without notice. 
+WyreStorm will not be liable for any use of this information or any changes it may make to those products. The use of this 
+information constitutes an agreement by the user to these limitations and exclusions. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Contacting Technical Support 
+Should further clarification of the content in this document or assistance on troubleshooting be required, please contact WyreStorm 
+technical support. 
+ 
+US: 518-289-1294 
+TOLL FREE: +1 844-280-WYRE (9973) 
+Email: support@wyrestorm.com  
+ 
+WyreStorm Technologies reserves the right to change the physical appearance or technical specification of this product at any time. 
+Visit wyrestorm.com for the latest product information. 

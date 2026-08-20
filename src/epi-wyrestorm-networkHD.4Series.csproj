@@ -3,7 +3,7 @@
 		<ProjectType>ProgramLibrary</ProjectType>
 	</PropertyGroup>
 	<PropertyGroup>
-		<TargetFramework>net472</TargetFramework>
+		<TargetFramework>net8</TargetFramework>
 		<RootNamespace>PepperDash.Essentials.Plugin</RootNamespace>
 		<Deterministic>false</Deterministic>
 		<AssemblyTitle>PepperDash.Essentials.Plugin.WyreStorm.NetworkHD</AssemblyTitle>
@@ -31,20 +31,20 @@
 	</ItemGroup>
 
 	<ItemGroup>
-    <None Remove="epi-make-model.projectinfo" />
+    <None Remove="epi-wyrestorm-networkHD.projectinfo" />
   </ItemGroup>
 
   <ItemGroup>
- 	<PackageReference Include="PepperDashEssentials" Version="2.12.1" >
+ 	<PackageReference Include="PepperDashEssentials" Version="3.0.0-dev-v3-routing.50" >
   		<ExcludeAssets>runtime</ExcludeAssets>
  	</PackageReference>
   </ItemGroup>
 
   <ItemGroup>
-    <None Remove="../output\epi-make-model.4Series.1.0.0-local.cplz" />
+    <None Remove="../output\epi-wyrestorm-networkHD.4Series.1.0.0-local.cplz" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Remove="../output\epi-make-model.4Series.1.0.0-local.cplz" />
+    <None Remove="../output\epi-wyrestorm-networkHD.4Series.1.0.0-local.cplz" />
   </ItemGroup>
 </Project>
